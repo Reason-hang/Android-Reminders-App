@@ -1,0 +1,21 @@
+# Gradle / Android build output
+.gradle/
+build/
+**/build/
+
+# Local machine config
+local.properties
+
+# IDE files
+.idea/
+*.iml
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Keystores
+*.jks
+*.keystore

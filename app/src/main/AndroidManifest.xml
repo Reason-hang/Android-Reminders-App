@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 精确闹钟（Android 12+ 核心权限，本App提醒功能强依赖）
+         同时声明两个权限：
+         - USE_EXACT_ALARM（API 33+）：属于"闹钟/日历类"应用可用的普通权限，安装时自动授予，不会被系统关闭。
+           仅上架 Google Play 才受政策限制，个人自用直装 APK 不受影响，用它可以让本App在你的
+           红米 K80 Pro（Android 16）上完全免去"去设置里手动开精确闹钟"这一步。
+         - SCHEDULE_EXACT_ALARM（API 31+）：作为兜底，万一以后把 minSdk 改低到 Android 12/12L
+           设备上运行（那些系统版本还不认识 USE_EXACT_ALARM），代码里仍会检测并引导用户手动授权。 -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <!-- 发通知：Android 13+ 运行时权限，Manifest 里也要声明 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- 开机自启，收到 BOOT_COMPLETED 后重新注册所有闹钟 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- 震动 -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- 保持 CPU 唤醒直到通知发出（部分机型如小米需要） -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <application
+        android:name=".App"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.ReminderApp"
+        android:supportsRtl="true"
+        android:enableOnBackInvokedCallback="true">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.ReminderApp"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 闹钟触发接收器：AlarmManager 到点后回调这里发通知 -->
+        <receiver
+            android:name=".receiver.AlarmReceiver"
+            android:exported="false" />
+
+        <!-- 开机广播接收器：重新注册所有未来的闹钟 -->
+        <receiver
+            android:name=".receiver.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <!-- MIUI 部分机型使用 QUICKBOOT_POWERON 代替标准广播 -->
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 通知栏 Action 按钮接收器：即使 App 被杀掉也能响应"标为完成/稍后提醒" -->
+        <receiver
+            android:name=".receiver.NotificationActionReceiver"
+            android:exported="false" />
+
+    </application>
+
+</manifest>

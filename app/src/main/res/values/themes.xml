@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Compose 接管了实际界面绘制，这里只需要一个最基础的窗口主题，
+         主要是给系统在 Activity 创建之前显示的窗口背景/状态栏用。 -->
+    <style name="Theme.ReminderApp" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+</resources>

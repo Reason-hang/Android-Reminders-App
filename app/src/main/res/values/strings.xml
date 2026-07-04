@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">提醒事项</string>
+    <string name="notification_channel_sound_vibrate">提醒（响铃+震动）</string>
+    <string name="notification_channel_sound_only">提醒（仅响铃）</string>
+    <string name="notification_channel_vibrate_only">提醒（仅震动）</string>
+    <string name="notification_channel_silent">提醒（静音）</string>
+    <string name="action_mark_done">标为完成</string>
+    <string name="action_snooze">稍后提醒</string>
+</resources>
