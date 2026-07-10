@@ -7,6 +7,7 @@ import com.reminder.local.data.repository.ReminderRepository
 import com.reminder.local.domain.alarm.AlarmScheduler
 import com.reminder.local.domain.usecase.CompleteReminderUseCase
 import com.reminder.local.notification.NotificationHelper
+import com.reminder.local.service.AlarmAlertService
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,10 +36,12 @@ class NotificationActionReceiver : BroadcastReceiver() {
                 val reminder = repository.getById(reminderId) ?: return@launch
                 when (intent.action) {
                     ACTION_MARK_DONE -> {
+                        context.stopService(Intent(context, AlarmAlertService::class.java))
                         completeReminderUseCase.markDone(reminder)
                         notificationHelper.cancelNotification(reminder)
                     }
                     ACTION_SNOOZE -> {
+                        context.stopService(Intent(context, AlarmAlertService::class.java))
                         notificationHelper.cancelNotification(reminder)
                         runCatching {
                             alarmScheduler.scheduleSnooze(reminder, SNOOZE_DELAY_MILLIS)

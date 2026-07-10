@@ -3,6 +3,7 @@ package com.reminder.local.data.db
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.reminder.local.data.db.dao.CategoryDao
 import com.reminder.local.data.db.dao.ReminderDao
@@ -11,7 +12,7 @@ import com.reminder.local.data.db.entity.ReminderEntity
 
 @Database(
     entities = [ReminderEntity::class, CategoryEntity::class],
-    version = 1,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -22,6 +23,21 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         const val DB_NAME = "reminder.db"
+
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE reminders ADD COLUMN advanceReminderType TEXT NOT NULL DEFAULT 'NONE'"
+                )
+            }
+        }
+
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE reminders ADD COLUMN customAdvanceValue INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE reminders ADD COLUMN customAdvanceUnit TEXT NOT NULL DEFAULT 'HOURS'")
+            }
+        }
 
         /**
          * 首次建库时插入内置分类（工作/生活/学习/健康）。

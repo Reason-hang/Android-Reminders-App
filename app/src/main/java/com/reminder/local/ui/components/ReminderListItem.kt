@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -34,7 +33,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.reminder.local.domain.model.Category
-import com.reminder.local.domain.model.Priority
 import com.reminder.local.domain.model.Reminder
 import com.reminder.local.domain.model.ReminderStatus
 import com.reminder.local.util.TimeFormatter
@@ -127,16 +125,10 @@ private fun ReminderCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Checkbox(checked = isDone, onCheckedChange = { onToggleComplete() })
-            Box(
-                modifier = Modifier
-                    .size(10.dp)
-                    .clip(CircleShape)
-                    .background(reminder.priority.color)
-            )
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(start = 12.dp)
+                    .padding(start = 4.dp)
             ) {
                 Text(
                     text = reminder.title,

@@ -7,7 +7,8 @@ import com.reminder.local.data.datastore.SettingsDataStore
 import com.reminder.local.data.repository.CategoryRepository
 import com.reminder.local.data.repository.ReminderRepository
 import com.reminder.local.domain.model.Category
-import com.reminder.local.domain.model.Priority
+import com.reminder.local.domain.model.AdvanceReminderType
+import com.reminder.local.domain.model.AdvanceReminderUnit
 import com.reminder.local.domain.model.Reminder
 import com.reminder.local.domain.model.RepeatActionScope
 import com.reminder.local.domain.model.RepeatType
@@ -37,9 +38,11 @@ data class EditReminderUiState(
     val note: String = "",
     val triggerTime: Long = 0L,
     val categoryId: Long? = null,
-    val priority: Priority = Priority.MEDIUM,
     val repeatType: RepeatType = RepeatType.NONE,
     val repeatEndDate: Long? = null,
+    val advanceReminderType: AdvanceReminderType = AdvanceReminderType.NONE,
+    val customAdvanceValue: Int = 1,
+    val customAdvanceUnit: AdvanceReminderUnit = AdvanceReminderUnit.HOURS,
     val notifyVibrate: Boolean = true,
     val notifySound: Boolean = true,
     val status: ReminderStatus = ReminderStatus.PENDING,
@@ -85,9 +88,11 @@ class EditReminderViewModel @Inject constructor(
                         note = reminder.note ?: "",
                         triggerTime = reminder.triggerTime,
                         categoryId = reminder.categoryId,
-                        priority = reminder.priority,
                         repeatType = reminder.repeatType,
                         repeatEndDate = reminder.repeatEndDate,
+                        advanceReminderType = reminder.advanceReminderType,
+                        customAdvanceValue = reminder.customAdvanceValue,
+                        customAdvanceUnit = reminder.customAdvanceUnit,
                         notifyVibrate = reminder.notifyVibrate,
                         notifySound = reminder.notifySound,
                         status = reminder.status,
@@ -126,10 +131,6 @@ class EditReminderViewModel @Inject constructor(
         _uiState.value = _uiState.value.copy(categoryId = categoryId)
     }
 
-    fun onPrioritySelected(priority: Priority) {
-        _uiState.value = _uiState.value.copy(priority = priority)
-    }
-
     fun onRepeatTypeSelected(type: RepeatType) {
         _uiState.value = _uiState.value.copy(
             repeatType = type,
@@ -139,6 +140,18 @@ class EditReminderViewModel @Inject constructor(
 
     fun onRepeatEndDateSelected(millis: Long?) {
         _uiState.value = _uiState.value.copy(repeatEndDate = millis)
+    }
+
+    fun onAdvanceReminderSelected(type: AdvanceReminderType) {
+        _uiState.value = _uiState.value.copy(advanceReminderType = type)
+    }
+
+    fun onCustomAdvanceValueSelected(value: Int) {
+        _uiState.value = _uiState.value.copy(customAdvanceValue = value.coerceIn(1, 200))
+    }
+
+    fun onCustomAdvanceUnitSelected(unit: AdvanceReminderUnit) {
+        _uiState.value = _uiState.value.copy(customAdvanceUnit = unit)
     }
 
     fun onNotifyVibrateToggle(enabled: Boolean) {
@@ -165,9 +178,11 @@ class EditReminderViewModel @Inject constructor(
                 note = state.note.trim().ifBlank { null },
                 triggerTime = state.triggerTime,
                 categoryId = state.categoryId,
-                priority = state.priority,
                 repeatType = state.repeatType,
                 repeatEndDate = state.repeatEndDate,
+                advanceReminderType = state.advanceReminderType,
+                customAdvanceValue = state.customAdvanceValue,
+                customAdvanceUnit = state.customAdvanceUnit,
                 notifyVibrate = state.notifyVibrate,
                 notifySound = state.notifySound,
                 status = state.status

@@ -26,6 +26,12 @@ class EditReminderUseCase @Inject constructor(
         val old = repository.getById(updated.id) ?: return EditResult.Failure("提醒不存在")
         val now = System.currentTimeMillis()
         val timeChanged = updated.triggerTime != old.triggerTime
+        val scheduleChanged = timeChanged ||
+            updated.advanceReminderType != old.advanceReminderType ||
+            updated.customAdvanceValue != old.customAdvanceValue ||
+            updated.customAdvanceUnit != old.customAdvanceUnit ||
+            updated.repeatType != old.repeatType ||
+            updated.repeatEndDate != old.repeatEndDate
 
         var reactivated = false
         var toSave = updated
@@ -59,13 +65,19 @@ class EditReminderUseCase @Inject constructor(
 
         return try {
             val finalToSave = toSave.copy(alarmId = old.alarmId, updatedAt = now)
+            if (scheduleChanged && old.status == ReminderStatus.PENDING) {
+                alarmScheduler.cancel(old)
+            }
             repository.update(finalToSave)
-            if (timeChanged && finalToSave.status == ReminderStatus.PENDING) {
+            if (scheduleChanged && finalToSave.status == ReminderStatus.PENDING) {
                 try {
                     alarmScheduler.scheduleExact(finalToSave)
                 } catch (e: Exception) {
                     // 调度失败：把数据库状态还原成旧值，保持原子性。
                     repository.update(old)
+                    if (old.status == ReminderStatus.PENDING) {
+                        runCatching { alarmScheduler.scheduleExact(old) }
+                    }
                     return EditResult.Failure()
                 }
             }

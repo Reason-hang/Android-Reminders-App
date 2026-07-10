@@ -7,13 +7,16 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.reminder.local.AlarmActivity
 import com.reminder.local.MainActivity
 import com.reminder.local.R
 import com.reminder.local.data.repository.CategoryRepository
 import com.reminder.local.domain.model.Reminder
 import com.reminder.local.receiver.NotificationActionReceiver
+import com.reminder.local.service.AlarmAlertKind
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -34,6 +37,8 @@ class NotificationHelper @Inject constructor(
         const val CHANNEL_SOUND_ONLY = "reminder_sound_only"
         const val CHANNEL_VIBRATE_ONLY = "reminder_vibrate_only"
         const val CHANNEL_SILENT = "reminder_silent"
+        const val CHANNEL_FULLSCREEN_ALERT = "reminder_fullscreen_alert_v2"
+        const val CHANNEL_ADVANCE = "reminder_advance"
     }
 
     fun createNotificationChannels() {
@@ -69,7 +74,29 @@ class NotificationHelper @Inject constructor(
             setSound(null, null)
         }
 
-        manager.createNotificationChannels(listOf(soundVibrate, soundOnly, vibrateOnly, silent))
+        val fullScreenAlert = NotificationChannel(
+            CHANNEL_FULLSCREEN_ALERT,
+            context.getString(R.string.notification_channel_fullscreen_alert),
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            enableVibration(false)
+            setSound(null, null)
+            lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
+            setShowBadge(true)
+        }
+
+        val advance = NotificationChannel(
+            CHANNEL_ADVANCE,
+            context.getString(R.string.notification_channel_advance),
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            enableVibration(false)
+            setSound(null, null)
+        }
+
+        manager.createNotificationChannels(
+            listOf(soundVibrate, soundOnly, vibrateOnly, silent, fullScreenAlert, advance)
+        )
     }
 
     private fun channelFor(reminder: Reminder): String = when {
@@ -81,6 +108,11 @@ class NotificationHelper @Inject constructor(
 
     @SuppressLint("MissingPermission")
     suspend fun showReminderNotification(reminder: Reminder) {
+        showFullScreenReminderNotification(reminder)
+    }
+
+    @SuppressLint("MissingPermission")
+    suspend fun showFullScreenReminderNotification(reminder: Reminder) {
         val notificationId = reminder.alarmId
 
         val contentText = when {
@@ -91,9 +123,11 @@ class NotificationHelper @Inject constructor(
 
         val title = if (reminder.isRepeating) "🔁 ${reminder.title}" else reminder.title
 
-        val contentIntent = Intent(context, MainActivity::class.java).apply {
+        val contentIntent = Intent(context, AlarmActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(MainActivity.EXTRA_OPEN_REMINDER_ID, reminder.id)
+            putExtra(AlarmActivity.EXTRA_REMINDER_ID, reminder.id)
+            putExtra(AlarmActivity.EXTRA_ALARM_TIME, reminder.effectiveTime)
+            putExtra(AlarmActivity.EXTRA_ALARM_KIND, AlarmAlertKind.DUE.name)
         }
         val contentPendingIntent = PendingIntent.getActivity(
             context,
@@ -126,14 +160,21 @@ class NotificationHelper @Inject constructor(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = NotificationCompat.Builder(context, channelFor(reminder))
+        val notification = NotificationCompat.Builder(context, CHANNEL_FULLSCREEN_ALERT)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title)
             .setContentText(contentText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setShowWhen(true)
+            .setWhen(System.currentTimeMillis())
             .setAutoCancel(false)
+            .setOngoing(true)
+            .setSilent(true)
             .setContentIntent(contentPendingIntent)
+            .setFullScreenIntent(contentPendingIntent, true)
             .addAction(0, context.getString(R.string.action_mark_done), markDonePendingIntent)
             .addAction(0, context.getString(R.string.action_snooze), snoozePendingIntent)
             .build()
@@ -141,7 +182,40 @@ class NotificationHelper @Inject constructor(
         NotificationManagerCompat.from(context).notify(notificationId, notification)
     }
 
+    @SuppressLint("MissingPermission")
+    suspend fun showAdvanceReminderNotification(reminder: Reminder) {
+        val contentText = when {
+            !reminder.note.isNullOrBlank() -> reminder.note
+            reminder.categoryId != null -> categoryRepository.getById(reminder.categoryId)?.name
+            else -> null
+        } ?: "点击查看详情"
+
+        val contentIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(MainActivity.EXTRA_OPEN_REMINDER_ID, reminder.id)
+        }
+        val contentPendingIntent = PendingIntent.getActivity(
+            context,
+            reminder.alarmId + 2,
+            contentIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ADVANCE)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle("提前提醒：${reminder.title}")
+            .setContentText(contentText)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setAutoCancel(true)
+            .setContentIntent(contentPendingIntent)
+            .build()
+
+        NotificationManagerCompat.from(context).notify(reminder.alarmId + 2, notification)
+    }
+
     fun cancelNotification(reminder: Reminder) {
         NotificationManagerCompat.from(context).cancel(reminder.alarmId)
+        NotificationManagerCompat.from(context).cancel(reminder.alarmId + 2)
     }
 }

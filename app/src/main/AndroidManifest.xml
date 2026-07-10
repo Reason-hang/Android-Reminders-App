@@ -14,6 +14,9 @@
     <!-- 发通知：Android 13+ 运行时权限，Manifest 里也要声明 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Android 14+ 对全屏通知做了独立管控；闹钟/提醒类 App 属于合理使用场景。 -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
     <!-- 开机自启，收到 BOOT_COMPLETED 后重新注册所有闹钟 -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
@@ -22,6 +25,10 @@
 
     <!-- 保持 CPU 唤醒直到通知发出（部分机型如小米需要） -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- 到点强提醒使用前台服务持续响铃/震动，避免全屏 Activity 被系统拦截后完全无提醒 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <application
         android:name=".App"
@@ -44,6 +51,15 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".AlarmActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:showWhenLocked="true"
+            android:theme="@style/Theme.ReminderApp"
+            android:turnScreenOn="true" />
+
         <!-- 闹钟触发接收器：AlarmManager 到点后回调这里发通知 -->
         <receiver
             android:name=".receiver.AlarmReceiver"
@@ -65,6 +81,11 @@
         <receiver
             android:name=".receiver.NotificationActionReceiver"
             android:exported="false" />
+
+        <service
+            android:name=".service.AlarmAlertService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
     </application>
 

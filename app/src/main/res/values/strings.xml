@@ -5,6 +5,8 @@
     <string name="notification_channel_sound_only">提醒（仅响铃）</string>
     <string name="notification_channel_vibrate_only">提醒（仅震动）</string>
     <string name="notification_channel_silent">提醒（静音）</string>
+    <string name="notification_channel_fullscreen_alert">强提醒全屏弹窗</string>
+    <string name="notification_channel_advance">提前提醒</string>
     <string name="action_mark_done">标为完成</string>
     <string name="action_snooze">稍后提醒</string>
 </resources>

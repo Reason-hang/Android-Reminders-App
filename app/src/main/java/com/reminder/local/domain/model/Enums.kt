@@ -1,14 +1,10 @@
 package com.reminder.local.domain.model
 
-import androidx.compose.ui.graphics.Color
-
-/**
- * 优先级：只影响列表排序和颜色展示，不影响通知方式。
- */
-enum class Priority(val label: String, val color: Color, val sortWeight: Int) {
-    HIGH("高", Color(0xFFD0021B), 0),
-    MEDIUM("中", Color(0xFFF5A623), 1),
-    LOW("低", Color(0xFF9B9B9B), 2)
+/** 旧版本数据库兼容字段；界面和业务逻辑不再使用该字段。 */
+enum class Priority {
+    HIGH,
+    MEDIUM,
+    LOW
 }
 
 /**
@@ -24,9 +20,39 @@ enum class ReminderStatus {
 
 enum class RepeatType(val label: String) {
     NONE("不重复"),
+    HOURLY("每小时"),
     DAILY("每天"),
+    WORKDAYS("工作日"),
     WEEKLY("每周"),
-    MONTHLY("每月")
+    WEEKLY_SUNDAY("每周日"),
+    WEEKEND("周末"),
+    BIWEEKLY("每两周"),
+    MONTHLY("每月"),
+    QUARTERLY("每3个月"),
+    SEMIANNUALLY("每6个月"),
+    YEARLY("每年")
+}
+
+enum class AdvanceReminderType(val label: String) {
+    NONE("无"),
+    FIVE_MINUTES("5分钟前"),
+    FIFTEEN_MINUTES("15分钟前"),
+    THIRTY_MINUTES("30分钟前"),
+    ONE_HOUR("一小时前"),
+    TWO_HOURS("二小时前"),
+    ONE_DAY("一天前"),
+    TWO_DAYS("两天前"),
+    ONE_WEEK("一周前"),
+    ONE_MONTH("一个月前"),
+    CUSTOM("自定义")
+}
+
+enum class AdvanceReminderUnit(val label: String) {
+    MINUTES("分钟"),
+    HOURS("小时"),
+    DAYS("天"),
+    WEEKS("周"),
+    MONTHS("个月")
 }
 
 /**

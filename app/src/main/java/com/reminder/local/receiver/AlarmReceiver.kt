@@ -3,12 +3,15 @@ package com.reminder.local.receiver
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import androidx.core.content.ContextCompat
 import com.reminder.local.data.repository.ReminderRepository
 import com.reminder.local.domain.alarm.AlarmScheduler
 import com.reminder.local.domain.model.ReminderStatus
 import com.reminder.local.domain.model.RepeatType
 import com.reminder.local.domain.usecase.RepeatCalculator
 import com.reminder.local.notification.NotificationHelper
+import com.reminder.local.service.AlarmAlertKind
+import com.reminder.local.service.AlarmAlertService
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +34,7 @@ class AlarmReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val reminderId = intent.getLongExtra(EXTRA_REMINDER_ID, -1L)
+        val alarmKind = intent.getStringExtra(EXTRA_ALARM_KIND) ?: KIND_DUE
         if (reminderId < 0) return
 
         val pendingResult = goAsync()
@@ -38,9 +42,31 @@ class AlarmReceiver : BroadcastReceiver() {
             try {
                 val reminder = repository.getById(reminderId)
                 if (reminder != null && reminder.status == ReminderStatus.PENDING) {
-                    notificationHelper.showReminderNotification(reminder)
+                    if (AlarmTriggerPolicy.shouldStartStrongAlert(alarmKind)) {
+                        ContextCompat.startForegroundService(
+                            context,
+                            AlarmAlertService.startIntent(
+                                context = context,
+                                reminderId = reminder.id,
+                                alarmId = reminder.alarmId,
+                                title = reminder.title,
+                                note = reminder.note,
+                                alarmTime = reminder.effectiveTime,
+                                sound = reminder.notifySound,
+                                vibrate = reminder.notifyVibrate,
+                                kind = if (alarmKind == KIND_ADVANCE) {
+                                    AlarmAlertKind.ADVANCE
+                                } else {
+                                    AlarmAlertKind.DUE
+                                }
+                            )
+                        )
+                    }
 
-                    if (reminder.repeatType != RepeatType.NONE) {
+                    if (
+                        AlarmTriggerPolicy.shouldProgressRepeatingReminder(alarmKind) &&
+                        reminder.repeatType != RepeatType.NONE
+                    ) {
                         val next = RepeatCalculator.computeNext(
                             reminder.triggerTime,
                             reminder.effectiveTime,
@@ -66,5 +92,8 @@ class AlarmReceiver : BroadcastReceiver() {
 
     companion object {
         const val EXTRA_REMINDER_ID = "extra_reminder_id"
+        const val EXTRA_ALARM_KIND = "extra_alarm_kind"
+        const val KIND_DUE = "due"
+        const val KIND_ADVANCE = "advance"
     }
 }

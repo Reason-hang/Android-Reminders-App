@@ -70,7 +70,7 @@ class ReminderListViewModel @Inject constructor(
             else -> reminders.filter { it.categoryId == selectedId }
         }
         val pending = filtered.filter { it.status != ReminderStatus.DONE }
-            .sortedWith(compareBy({ it.priority.sortWeight }, { it.effectiveTime }))
+            .sortedBy { it.effectiveTime }
         val done = filtered.filter { it.status == ReminderStatus.DONE }
             .sortedByDescending { it.completedAt ?: it.updatedAt }
 

@@ -113,6 +113,25 @@ fun SettingsScreen(
                 }
             }
 
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("全屏提醒")
+                    Text(
+                        if (uiState.fullScreenIntentGranted) "已开启，锁屏时可弹出强提醒" else "未开启，可能退化成普通通知",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (uiState.fullScreenIntentGranted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error
+                    )
+                }
+                if (!uiState.fullScreenIntentGranted) {
+                    TextButton(onClick = {
+                        context.startActivity(PermissionUtils.fullScreenIntentSettingsIntent(context))
+                    }) { Text("去开启") }
+                }
+            }
+
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
 
             Text("小米/红米机型提示", style = MaterialTheme.typography.labelSmall)
@@ -126,6 +145,13 @@ fun SettingsScreen(
             TextButton(onClick = {
                 context.startActivity(PermissionUtils.appDetailsSettingsIntent(context))
             }) { Text("打开应用详情设置页") }
+            TextButton(onClick = {
+                runCatching {
+                    context.startActivity(PermissionUtils.miuiAutoStartSettingsIntent())
+                }.onFailure {
+                    context.startActivity(PermissionUtils.appDetailsSettingsIntent(context))
+                }
+            }) { Text("打开自启动管理") }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
 

@@ -44,11 +44,19 @@ class AddReminderUseCase @Inject constructor(
             } catch (alarmError: Exception) {
                 // 闹钟注册失败：回滚数据库写入，保持"整体成功或整体失败"。
                 repository.delete(saved)
-                return SaveResult.Failure()
+                return SaveResult.Failure(alarmError.toUserMessage())
             }
             SaveResult.Success(id)
         } catch (dbError: Exception) {
             SaveResult.Failure()
         }
     }
+
+    private fun Exception.toUserMessage(): String =
+        when {
+            message?.contains("精确闹钟权限") == true ->
+                "精确闹钟权限未开启，请到设置页打开后重试"
+            else ->
+                "闹钟注册失败，请检查通知、锁屏显示和后台弹出权限后重试"
+        }
 }
