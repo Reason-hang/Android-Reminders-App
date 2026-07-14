@@ -16,6 +16,7 @@ import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.reminder.local.AlarmActivity
@@ -33,6 +34,7 @@ class AlarmAlertService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(TAG, "onStartCommand action=${intent?.action}")
         when (intent?.action) {
             ACTION_STOP -> {
                 stopAlert()
@@ -52,18 +54,36 @@ class AlarmAlertService : Service() {
                 val activityIntent = alarmActivityIntent(reminderId, alarmTime, kind)
                 val activityPendingIntent = activityPendingIntent(alarmId, activityIntent)
 
-                startForeground(
-                    currentNotificationId,
-                    buildNotification(
-                        reminderId = reminderId,
-                        alarmId = alarmId,
-                        content = content,
-                        activityPendingIntent = activityPendingIntent
+                // 2026-07 复盘修复：这四步之前是顺序裸调用，任何一步抛异常都会让后面的步骤
+                // （包括响铃、震动、拉起全屏页）整体静默跳过，且没有任何日志——用户只会看到
+                // “通知栏有一条记录，但没有任何动静”，而开发者事后完全无法定位是哪一步失败。
+                // 现在每一步单独 try/catch + Log，互不影响，出问题时 logcat 里能直接看到
+                // 是 startForeground / wakeScreen / startAlert / launchAlarmActivity 里的哪一步、
+                // 抛出的是什么异常。
+                runCatching {
+                    startForeground(
+                        currentNotificationId,
+                        buildNotification(
+                            reminderId = reminderId,
+                            alarmId = alarmId,
+                            content = content,
+                            activityPendingIntent = activityPendingIntent
+                        )
                     )
-                )
-                wakeScreen()
-                startAlert(sound, vibrate)
-                launchAlarmActivity(activityPendingIntent)
+                }.onFailure {
+                    Log.e(TAG, "startForeground 失败，alarmId=$alarmId kind=$kind", it)
+                }
+
+                runCatching { wakeScreen() }
+                    .onFailure { Log.e(TAG, "wakeScreen 失败，alarmId=$alarmId", it) }
+
+                runCatching { startAlert(sound, vibrate) }
+                    .onFailure { Log.e(TAG, "startAlert(响铃/震动) 失败，alarmId=$alarmId", it) }
+
+                runCatching { launchAlarmActivity(activityPendingIntent) }
+                    .onFailure { Log.e(TAG, "launchAlarmActivity 失败，alarmId=$alarmId", it) }
+
+                Log.d(TAG, "闹钟强提醒流程执行完毕 alarmId=$alarmId kind=$kind sound=$sound vibrate=$vibrate")
                 return START_STICKY
             }
             else -> return START_NOT_STICKY
@@ -71,6 +91,7 @@ class AlarmAlertService : Service() {
     }
 
     override fun onDestroy() {
+        Log.d(TAG, "onDestroy alarmId=$currentNotificationId")
         stopRingtoneAndVibration()
         super.onDestroy()
     }
@@ -139,7 +160,6 @@ class AlarmAlertService : Service() {
             .setShowWhen(true)
             .setWhen(System.currentTimeMillis())
             .setOngoing(true)
-            .setSilent(true)
             .setContentIntent(activityPendingIntent)
             .setFullScreenIntent(activityPendingIntent, true)
             .setPublicVersion(publicPreview)
@@ -260,6 +280,8 @@ class AlarmAlertService : Service() {
     }
 
     companion object {
+        private const val TAG = "AlarmAlertService"
+
         const val ACTION_START = "com.reminder.local.action.ALARM_ALERT_START"
         const val ACTION_STOP = "com.reminder.local.action.ALARM_ALERT_STOP"
         const val EXTRA_REMINDER_ID = "extra_reminder_id"

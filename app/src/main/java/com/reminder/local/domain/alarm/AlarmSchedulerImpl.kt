@@ -63,7 +63,7 @@ class AlarmSchedulerImpl @Inject constructor(
 
     private fun scheduleOne(reminder: Reminder, triggerAt: Long, kind: String, requestCode: Int) {
         val operation = buildOperationPendingIntent(reminder, kind, requestCode)
-        val showIntent = buildShowPendingIntent(reminder)
+        val showIntent = buildShowPendingIntent(reminder, kind)
         alarmManager.setAlarmClock(
             AlarmManager.AlarmClockInfo(triggerAt, showIntent),
             operation
@@ -87,7 +87,7 @@ class AlarmSchedulerImpl @Inject constructor(
         }
         val triggerAt = System.currentTimeMillis() + delayMillis
         val operation = buildOperationPendingIntent(reminder, AlarmReceiver.KIND_DUE, snoozeAlarmRequestCode(reminder.alarmId))
-        val showIntent = buildShowPendingIntent(reminder)
+        val showIntent = buildShowPendingIntent(reminder, AlarmReceiver.KIND_DUE)
         alarmManager.setAlarmClock(
             AlarmManager.AlarmClockInfo(triggerAt, showIntent),
             operation
@@ -107,12 +107,18 @@ class AlarmSchedulerImpl @Inject constructor(
         )
     }
 
-    private fun buildShowPendingIntent(reminder: Reminder): PendingIntent {
+    private fun buildShowPendingIntent(reminder: Reminder, kind: String): PendingIntent {
         val intent = Intent(context, AlarmActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(AlarmActivity.EXTRA_REMINDER_ID, reminder.id)
             putExtra(AlarmActivity.EXTRA_ALARM_TIME, reminder.effectiveTime)
-            putExtra(AlarmActivity.EXTRA_ALARM_KIND, AlarmAlertKind.DUE.name)
+            // 2026-07 第二轮复查修复：这里以前无论 DUE / ADVANCE / 稍后提醒都写死传 DUE，
+            // 只影响系统状态栏"下一个闹钟"图标被手动点开时的预览文案（不影响到点后的真实提醒），
+            // 但既然有现成的 kind 参数，顺手传对更准确。
+            putExtra(
+                AlarmActivity.EXTRA_ALARM_KIND,
+                if (kind == AlarmReceiver.KIND_ADVANCE) AlarmAlertKind.ADVANCE.name else AlarmAlertKind.DUE.name
+            )
         }
         val options = creatorBackgroundActivityLaunchOptions()
         return if (options != null) {
@@ -153,8 +159,17 @@ class AlarmSchedulerImpl @Inject constructor(
         }
 
     companion object {
-        /** 生成一个稳定的 Int alarmId，避免数据库自增 Long 主键直接转 Int 溢出冲突。 */
-        fun generateAlarmId(): Int = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
+        /**
+         * 生成一个稳定的 Int alarmId，避免数据库自增 Long 主键直接转 Int 溢出冲突。
+         *
+         * 2026-07 第二轮复查修复：原来是 `System.currentTimeMillis() % Int.MAX_VALUE`，
+         * 如果两条提醒在同一毫秒内先后创建（比如极快速连续点击"新增"、或未来做批量导入），
+         * 会拿到完全相同的 alarmId，导致两条提醒的 PendingIntent 被系统判定为"同一个"
+         * （FLAG_UPDATE_CURRENT 下后创建的会直接覆盖前一条），前一条提醒的系统闹钟就此丢失、
+         * 且没有任何报错。改用 Random 之后，即使同一毫秒创建也几乎不会碰撞；这个改动只影响
+         * "新创建"的提醒，已经写入数据库的旧 alarmId 不受影响，不需要迁移。
+         */
+        fun generateAlarmId(): Int = kotlin.random.Random.nextInt(1, Int.MAX_VALUE)
 
         fun advanceAlarmRequestCode(alarmId: Int): Int = alarmId xor 0x40000000
 

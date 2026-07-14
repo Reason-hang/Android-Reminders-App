@@ -134,11 +134,36 @@ fun SettingsScreen(
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
 
+            Text("锁屏通知与后台弹窗", style = MaterialTheme.typography.labelSmall)
+            Text(
+                "以下两项是系统/厂商单独控制的开关，和上面的\"精确闹钟\"\"全屏提醒\"权限互相独立，\n" +
+                    "任何一项被关闭，都可能出现\"响铃震动正常，但锁屏看不到内容\"或\n" +
+                    "\"App 在后台时不会自动弹出提醒页，只有手动打开 App 才看得到\"：\n" +
+                    "1. 通知设置里确认\"允许在锁屏上显示通知\"为开启，且未选择\"隐藏敏感内容\"；\n" +
+                    "2. 小米/红米机型另需在权限管理里额外开启\"锁屏显示\"和\"悬浮窗\"（后台弹出界面）。",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            TextButton(onClick = {
+                context.startActivity(PermissionUtils.notificationSettingsIntent(context))
+            }) { Text("打开通知设置（锁屏显示通知）") }
+            TextButton(onClick = {
+                runCatching {
+                    context.startActivity(PermissionUtils.miuiAppPermissionEditorIntent(context))
+                }.onFailure {
+                    context.startActivity(PermissionUtils.appDetailsSettingsIntent(context))
+                }
+            }) { Text("打开小米权限管理（锁屏显示/悬浮窗）") }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+
             Text("小米/红米机型提示", style = MaterialTheme.typography.labelSmall)
             Text(
                 "MIUI/HyperOS 系统电池策略较激进，为保证提醒准时到达，建议手动前往：\n" +
                     "设置 → 应用设置 → 应用管理 → 提醒事项 → 省电策略，选择「无限制」；\n" +
-                    "并在「自启动管理」中允许本App自启动。",
+                    "并在「自启动管理」中允许本App自启动。\n" +
+                    "「省电策略无限制」和「自启动」只解决\"进程会不会被杀\"，\n" +
+                    "不能替代上面的\"锁屏显示\"\"悬浮窗\"这两项——四项建议全部开启。",
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 8.dp)
             )

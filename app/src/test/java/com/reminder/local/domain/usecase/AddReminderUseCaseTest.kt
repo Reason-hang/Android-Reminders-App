@@ -40,6 +40,16 @@ class AddReminderUseCaseTest {
         assertEquals("闹钟注册失败，请检查通知、锁屏显示和后台弹出权限后重试", (result as SaveResult.Failure).message)
     }
 
+    @Test
+    fun availableAlarmIdSkipsAnIdAlreadyUsedByAnotherReminder() = runBlocking {
+        val repository = FakeReminderRepository(usedAlarmIds = setOf(101))
+        val candidates = ArrayDeque(listOf(101, 202))
+
+        val alarmId = repository.nextAvailableAlarmId { candidates.removeFirst() }
+
+        assertEquals(202, alarmId)
+    }
+
     private fun futureReminder(): Reminder =
         Reminder(
             title = "测试提醒",
@@ -58,13 +68,16 @@ private class ThrowingAlarmScheduler(
     override fun scheduleSnooze(reminder: Reminder, delayMillis: Long) = Unit
 }
 
-private class FakeReminderRepository : ReminderRepository {
+private class FakeReminderRepository(
+    private val usedAlarmIds: Set<Int> = emptySet()
+) : ReminderRepository {
     private var saved: Reminder? = null
     var deletedAfterInsert: Boolean = false
         private set
 
     override fun observeAll(): Flow<List<Reminder>> = flowOf(emptyList())
     override suspend fun getById(id: Long): Reminder? = saved?.takeIf { it.id == id }
+    override suspend fun isAlarmIdInUse(alarmId: Int): Boolean = alarmId in usedAlarmIds
     override suspend fun insert(reminder: Reminder): Long {
         saved = reminder.copy(id = 1L)
         return 1L

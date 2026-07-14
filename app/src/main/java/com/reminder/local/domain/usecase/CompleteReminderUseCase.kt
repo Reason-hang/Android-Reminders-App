@@ -1,5 +1,6 @@
 package com.reminder.local.domain.usecase
 
+import android.util.Log
 import com.reminder.local.data.repository.ReminderRepository
 import com.reminder.local.domain.alarm.AlarmScheduler
 import com.reminder.local.domain.model.Reminder
@@ -51,8 +52,13 @@ class CompleteReminderUseCase @Inject constructor(
             )
         } else {
             val updated = reminder.copy(nextTriggerTime = next, updatedAt = System.currentTimeMillis())
+            // 2026-07 第二轮复查修复：之前这里只有 onSuccess，调度失败时数据库不会更新
+            // nextTriggerTime，但上面几行已经先 alarmScheduler.cancel() 把旧闹钟取消了——
+            // 一旦 scheduleExact 失败，这条重复提醒就会变成"看起来还是 PENDING，实际上没有
+            // 任何系统闹钟在等它"，且没有任何日志能发现。现在失败时至少打日志，方便定位。
             runCatching { alarmScheduler.scheduleExact(updated) }
                 .onSuccess { repository.update(updated) }
+                .onFailure { Log.e(TAG, "markDone(ONCE) 重新调度失败 reminderId=${reminder.id}", it) }
         }
     }
 
@@ -68,11 +74,16 @@ class CompleteReminderUseCase @Inject constructor(
             )
             runCatching { alarmScheduler.scheduleExact(updated) }
                 .onSuccess { repository.update(updated) }
+                .onFailure { Log.e(TAG, "markPending 重新调度失败 reminderId=${reminder.id}", it) }
         } else {
             // 时间已经过去了，不能对着过去的时间重新触发通知，只把状态还原成"已过期"。
             repository.update(
                 reminder.copy(status = ReminderStatus.EXPIRED, completedAt = null, updatedAt = now)
             )
         }
+    }
+
+    private companion object {
+        const val TAG = "CompleteReminderUseCase"
     }
 }

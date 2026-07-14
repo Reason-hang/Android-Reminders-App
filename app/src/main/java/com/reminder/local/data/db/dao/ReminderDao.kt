@@ -23,6 +23,9 @@ interface ReminderDao {
     @Query("SELECT * FROM reminders WHERE id = :id")
     suspend fun getById(id: Long): ReminderEntity?
 
+    @Query("SELECT EXISTS(SELECT 1 FROM reminders WHERE alarmId = :alarmId)")
+    suspend fun isAlarmIdInUse(alarmId: Int): Boolean
+
     /** 列表页监听：全部提醒，具体的分组/排序逻辑放在上层（domain/ui），DAO 只做基础查询。 */
     @Query("SELECT * FROM reminders ORDER BY triggerTime ASC")
     fun observeAll(): Flow<List<ReminderEntity>>

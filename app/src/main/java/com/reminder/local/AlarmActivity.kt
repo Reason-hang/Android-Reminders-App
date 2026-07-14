@@ -4,6 +4,7 @@ import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -33,6 +34,7 @@ import androidx.lifecycle.lifecycleScope
 import com.reminder.local.data.repository.ReminderRepository
 import com.reminder.local.domain.alarm.AlarmScheduler
 import com.reminder.local.domain.model.Reminder
+import com.reminder.local.domain.model.RepeatActionScope
 import com.reminder.local.domain.usecase.CompleteReminderUseCase
 import com.reminder.local.notification.NotificationHelper
 import com.reminder.local.receiver.NotificationActionReceiver
@@ -135,6 +137,10 @@ class AlarmActivity : ComponentActivity() {
                     reminder,
                     NotificationActionReceiver.SNOOZE_DELAY_MILLIS
                 )
+            }.onFailure {
+                // 2026-07 第二轮复查修复：之前这里失败会被完全吞掉，用户点了"稍后提醒"、
+                // 页面正常关闭，但闹钟其实没有注册成功，10 分钟后不会再提醒，且没有任何记录。
+                Log.e(TAG, "稍后提醒调度失败 reminderId=${reminder.id}", it)
             }
             finish()
         }
@@ -144,13 +150,22 @@ class AlarmActivity : ComponentActivity() {
         val reminder = reminderState.value ?: return
         lifecycleScope.launch {
             stopAlert()
-            completeReminderUseCase.markDone(reminder)
+            // 2026-07 第二轮复查修复（重要）：这里之前调用 markDone(reminder) 没有传 scope，
+            // 会用默认值 RepeatActionScope.ALL——对于重复提醒，意味着在强提醒全屏页点一下
+            // "标为完成"，会把这条重复提醒"永久停止"，而不是"完成这一次、继续等下一次"。
+            // 列表页对重复提醒的"完成"操作会先弹窗问"仅本次 / 停止所有重复"，这里却直接静默
+            // 选择了最激进的那个选项，用户很容易在不知情的情况下把"每天吃药"这类重复提醒整个关掉。
+            // 全屏页是一个抢时间关掉响铃的场景，不适合再弹一个选择框打断，所以改成默认 ONCE
+            // （仅完成本次、正常推进到下一次）——和"从通知栏点标为完成"保持一致；
+            // 如果确实想彻底停止这条重复提醒，请到列表页操作（那里会弹窗确认）。
+            completeReminderUseCase.markDone(reminder, RepeatActionScope.ONCE)
             notificationHelper.cancelNotification(reminder)
             finish()
         }
     }
 
     companion object {
+        private const val TAG = "AlarmActivity"
         const val EXTRA_REMINDER_ID = "extra_alarm_reminder_id"
         const val EXTRA_ALARM_TIME = "extra_alarm_time"
         const val EXTRA_ALARM_KIND = "extra_alarm_kind"

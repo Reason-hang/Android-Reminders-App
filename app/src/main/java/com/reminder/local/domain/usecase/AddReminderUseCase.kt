@@ -30,7 +30,7 @@ class AddReminderUseCase @Inject constructor(
         }
 
         val prepared = input.copy(
-            alarmId = AlarmSchedulerImpl.generateAlarmId(),
+            alarmId = repository.nextAvailableAlarmId(AlarmSchedulerImpl::generateAlarmId),
             nextTriggerTime = input.triggerTime,
             createdAt = now,
             updatedAt = now
@@ -60,3 +60,13 @@ class AddReminderUseCase @Inject constructor(
                 "闹钟注册失败，请检查通知、锁屏显示和后台弹出权限后重试"
         }
 }
+
+internal suspend fun ReminderRepository.nextAvailableAlarmId(candidate: () -> Int): Int {
+    repeat(MAX_ALARM_ID_GENERATION_ATTEMPTS) {
+        val alarmId = candidate()
+        if (!isAlarmIdInUse(alarmId)) return alarmId
+    }
+    throw IllegalStateException("无法生成未占用的提醒闹钟标识")
+}
+
+private const val MAX_ALARM_ID_GENERATION_ATTEMPTS = 100

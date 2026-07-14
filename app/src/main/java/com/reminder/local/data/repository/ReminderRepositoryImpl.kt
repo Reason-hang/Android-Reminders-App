@@ -17,6 +17,8 @@ class ReminderRepositoryImpl @Inject constructor(
 
     override suspend fun getById(id: Long): Reminder? = dao.getById(id)?.toDomain()
 
+    override suspend fun isAlarmIdInUse(alarmId: Int): Boolean = dao.isAlarmIdInUse(alarmId)
+
     override suspend fun insert(reminder: Reminder): Long = dao.insert(reminder.toEntity())
 
     override suspend fun update(reminder: Reminder) = dao.update(reminder.toEntity())

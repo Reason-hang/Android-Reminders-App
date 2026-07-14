@@ -20,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -36,6 +37,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -82,9 +85,17 @@ fun EditReminderScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val zone = ZoneId.systemDefault()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(uiState.saveSuccess, uiState.deleted) {
         if (uiState.saveSuccess || uiState.deleted) onSaved()
+    }
+
+    // 2026-07 迭代修复：generalError 之前只在页面底部展示一行文字，如果用户是通过
+    // 顶部栏的"保存"触发保存并失败，页面停在顶部就完全看不到这行提示。
+    // 改用 Snackbar 后，无论当前滚动到哪里都能看到失败原因。
+    LaunchedEffect(uiState.generalError) {
+        uiState.generalError?.let { snackbarHostState.showSnackbar(it) }
     }
 
     var showDatePicker by remember { mutableStateOf(false) }
@@ -105,10 +116,24 @@ fun EditReminderScreen(
                     }
                 },
                 actions = {
-                    TextButton(
+                    // 2026-07 迭代修复（问题3）：原来页面底部还有一个同样触发 viewModel::save
+                    // 的全宽按钮，用户必须滚动到底才能点到，这里已删除那个重复按钮
+                    // （见下方表单末尾的注释）。现在"保存"只在顶部栏这一个入口，
+                    // 打开页面立刻可见，不需要滚动；同时把原来不醒目的纯文字按钮
+                    // 换成带图标的实心按钮，避免和旁边的删除图标一起被忽略。
+                    Button(
                         onClick = viewModel::save,
-                        enabled = !uiState.isSaving
+                        enabled = !uiState.isSaving,
+                        modifier = Modifier.padding(end = 4.dp)
                     ) {
+                        if (!uiState.isSaving) {
+                            Icon(
+                                Icons.Filled.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
                         Text(if (uiState.isSaving) "保存中" else "保存")
                     }
                     if (!uiState.isNew) {
@@ -118,7 +143,8 @@ fun EditReminderScreen(
                     }
                 }
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -305,20 +331,11 @@ fun EditReminderScreen(
                 Switch(checked = uiState.notifyVibrate, onCheckedChange = viewModel::onNotifyVibrateToggle)
             }
 
-            uiState.generalError?.let {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(it, color = MaterialTheme.colorScheme.error)
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Button(
-                onClick = viewModel::save,
-                enabled = !uiState.isSaving,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(if (uiState.isSaving) "保存中..." else "保存")
-            }
+            // 2026-07 迭代修复（问题3）：原来这里还有一个 fillMaxWidth 的"保存"按钮，
+            // 和顶部栏的保存按钮功能完全重复，用户必须滚动到表单最底部才能点到。
+            // 现在保存的唯一入口是顶部栏（见上方 TopAppBar.actions），打开页面就能看到，
+            // 不需要滚动。generalError 也已经改成顶部栏下方的 Snackbar 展示（见页面顶部），
+            // 这里不再需要单独展示。
 
             Spacer(modifier = Modifier.height(32.dp))
         }

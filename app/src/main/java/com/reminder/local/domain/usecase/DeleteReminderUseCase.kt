@@ -1,5 +1,6 @@
 package com.reminder.local.domain.usecase
 
+import android.util.Log
 import com.reminder.local.data.repository.ReminderRepository
 import com.reminder.local.domain.alarm.AlarmScheduler
 import com.reminder.local.domain.model.Reminder
@@ -33,8 +34,15 @@ class DeleteReminderUseCase @Inject constructor(
             repository.delete(reminder)
         } else {
             val updated = reminder.copy(nextTriggerTime = next, updatedAt = System.currentTimeMillis())
+            // 2026-07 第二轮复查修复：调度失败时补日志，避免"仅删除本次"之后这条重复提醒
+            // 静默变成没有系统闹钟支撑的僵尸记录。
             runCatching { alarmScheduler.scheduleExact(updated) }
                 .onSuccess { repository.update(updated) }
+                .onFailure { Log.e(TAG, "删除本次后重新调度失败 reminderId=${reminder.id}", it) }
         }
+    }
+
+    private companion object {
+        const val TAG = "DeleteReminderUseCase"
     }
 }

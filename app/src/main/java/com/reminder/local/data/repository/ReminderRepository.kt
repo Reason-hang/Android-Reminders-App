@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.Flow
 interface ReminderRepository {
     fun observeAll(): Flow<List<Reminder>>
     suspend fun getById(id: Long): Reminder?
+    suspend fun isAlarmIdInUse(alarmId: Int): Boolean
     suspend fun insert(reminder: Reminder): Long
     suspend fun update(reminder: Reminder)
     suspend fun delete(reminder: Reminder)

@@ -1,5 +1,6 @@
 package com.reminder.local.domain.usecase
 
+import android.util.Log
 import com.reminder.local.data.repository.ReminderRepository
 import com.reminder.local.domain.alarm.AlarmScheduler
 import com.reminder.local.domain.model.ReminderStatus
@@ -22,13 +23,18 @@ class RescheduleAllAlarmsUseCase @Inject constructor(
         repository.markNonRepeatingExpired(now)
 
         val pendings = repository.getAllPending()
+        Log.d(TAG, "重建闹钟开始，待处理 ${pendings.size} 条 PENDING 提醒")
         for (reminder in pendings) {
-            if (!alarmScheduler.canScheduleExactAlarms()) continue
+            if (!alarmScheduler.canScheduleExactAlarms()) {
+                Log.w(TAG, "精确闹钟权限未开启，跳过 reminderId=${reminder.id}")
+                continue
+            }
 
             if (reminder.repeatType == RepeatType.NONE) {
                 val effective = reminder.nextTriggerTime ?: reminder.triggerTime
                 if (effective > now) {
-                    alarmScheduler.scheduleExact(reminder)
+                    runCatching { alarmScheduler.scheduleExact(reminder) }
+                        .onFailure { Log.e(TAG, "非重复提醒重建失败 reminderId=${reminder.id}", it) }
                 }
                 // effective <= now 的情况已经被上面的 markNonRepeatingExpired 处理掉了。
                 continue
@@ -54,7 +60,13 @@ class RescheduleAllAlarmsUseCase @Inject constructor(
                 val updated = reminder.copy(nextTriggerTime = next, updatedAt = now)
                 runCatching { alarmScheduler.scheduleExact(updated) }
                     .onSuccess { repository.update(updated) }
+                    .onFailure { Log.e(TAG, "重复提醒重建失败 reminderId=${reminder.id}", it) }
             }
         }
+        Log.d(TAG, "重建闹钟结束")
+    }
+
+    private companion object {
+        const val TAG = "RescheduleAllAlarmsUseCase"
     }
 }
