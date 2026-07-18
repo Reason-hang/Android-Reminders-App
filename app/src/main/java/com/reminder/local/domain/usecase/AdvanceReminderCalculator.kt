@@ -21,13 +21,16 @@ object AdvanceReminderCalculator {
         val safeCustomValue = customValue.coerceIn(1, 200).toLong()
         val advance = when (type) {
             AdvanceReminderType.FIVE_MINUTES -> dateTime.minusMinutes(5)
+            AdvanceReminderType.TEN_MINUTES -> dateTime.minusMinutes(10)
             AdvanceReminderType.FIFTEEN_MINUTES -> dateTime.minusMinutes(15)
             AdvanceReminderType.THIRTY_MINUTES -> dateTime.minusMinutes(30)
             AdvanceReminderType.ONE_HOUR -> dateTime.minusHours(1)
             AdvanceReminderType.TWO_HOURS -> dateTime.minusHours(2)
+            AdvanceReminderType.THREE_HOURS -> dateTime.minusHours(3)
             AdvanceReminderType.ONE_DAY -> dateTime.minusDays(1)
             AdvanceReminderType.TWO_DAYS -> dateTime.minusDays(2)
             AdvanceReminderType.ONE_WEEK -> dateTime.minusWeeks(1)
+            AdvanceReminderType.TWO_WEEKS -> dateTime.minusWeeks(2)
             AdvanceReminderType.ONE_MONTH -> dateTime.minusMonths(1)
             AdvanceReminderType.CUSTOM -> when (customUnit) {
                 AdvanceReminderUnit.MINUTES -> dateTime.minusMinutes(safeCustomValue)

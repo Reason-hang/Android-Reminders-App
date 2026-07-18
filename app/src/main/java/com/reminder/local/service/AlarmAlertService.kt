@@ -7,6 +7,8 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.Ringtone
 import android.media.RingtoneManager
 import android.os.Build
@@ -23,13 +25,20 @@ import com.reminder.local.AlarmActivity
 import com.reminder.local.R
 import com.reminder.local.notification.NotificationHelper
 import com.reminder.local.receiver.NotificationActionReceiver
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class AlarmAlertService : Service() {
+
+    @Inject lateinit var notificationHelper: NotificationHelper
 
     private var ringtone: Ringtone? = null
     private var vibrator: Vibrator? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var currentNotificationId: Int = FALLBACK_NOTIFICATION_ID
+    private var currentReminderId: Long? = null
+    private var currentContent: AlarmAlertContent? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -37,13 +46,12 @@ class AlarmAlertService : Service() {
         Log.d(TAG, "onStartCommand action=${intent?.action}")
         when (intent?.action) {
             ACTION_STOP -> {
-                stopAlert()
+                acknowledgeAlert(intent)
                 return START_NOT_STICKY
             }
             ACTION_START -> {
                 val reminderId = intent.getLongExtra(EXTRA_REMINDER_ID, -1L)
                 val alarmId = intent.getIntExtra(EXTRA_ALARM_ID, FALLBACK_NOTIFICATION_ID)
-                currentNotificationId = alarmId
                 val title = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { "提醒事项" }
                 val note = intent.getStringExtra(EXTRA_NOTE)
                 val alarmTime = intent.getLongExtra(EXTRA_ALARM_TIME, -1L)
@@ -51,7 +59,25 @@ class AlarmAlertService : Service() {
                 val vibrate = intent.getBooleanExtra(EXTRA_VIBRATE, true)
                 val kind = AlarmAlertKind.fromWireValue(intent.getStringExtra(EXTRA_ALARM_KIND))
                 val content = AlarmAlertContentFormatter.format(title, note, kind)
-                val activityIntent = alarmActivityIntent(reminderId, alarmTime, kind)
+                if (
+                    AlarmAlertConcurrencyPolicy.shouldRetainCurrent(
+                        currentReminderId?.let { currentNotificationId },
+                        alarmId
+                    )
+                ) {
+                    retainCurrentAlert()
+                }
+                currentNotificationId = alarmId
+                currentReminderId = reminderId
+                currentContent = content
+                val activityIntent = alarmActivityIntent(
+                    reminderId = reminderId,
+                    alarmId = alarmId,
+                    title = title,
+                    note = note,
+                    alarmTime = alarmTime,
+                    kind = kind
+                )
                 val activityPendingIntent = activityPendingIntent(alarmId, activityIntent)
 
                 // 2026-07 复盘修复：这四步之前是顺序裸调用，任何一步抛异常都会让后面的步骤
@@ -67,7 +93,8 @@ class AlarmAlertService : Service() {
                             reminderId = reminderId,
                             alarmId = alarmId,
                             content = content,
-                            activityPendingIntent = activityPendingIntent
+                            activityPendingIntent = activityPendingIntent,
+                            kind = kind
                         )
                     )
                 }.onFailure {
@@ -100,11 +127,16 @@ class AlarmAlertService : Service() {
         reminderId: Long,
         alarmId: Int,
         content: AlarmAlertContent,
-        activityPendingIntent: PendingIntent
+        activityPendingIntent: PendingIntent,
+        kind: AlarmAlertKind
     ): Notification {
         val closeIntent = Intent(this, AlarmAlertService::class.java).apply {
             action = ACTION_STOP
+            putExtra(EXTRA_REMINDER_ID, reminderId)
             putExtra(EXTRA_ALARM_ID, alarmId)
+            putExtra(EXTRA_TITLE, content.title)
+            putExtra(EXTRA_NOTE, content.previewText)
+            putExtra(EXTRA_ALARM_KIND, kind.name)
         }
         val closePendingIntent = PendingIntent.getService(
             this,
@@ -169,10 +201,20 @@ class AlarmAlertService : Service() {
             .build()
     }
 
-    private fun alarmActivityIntent(reminderId: Long, alarmTime: Long, kind: AlarmAlertKind): Intent =
+    private fun alarmActivityIntent(
+        reminderId: Long,
+        alarmId: Int,
+        title: String,
+        note: String?,
+        alarmTime: Long,
+        kind: AlarmAlertKind
+    ): Intent =
         Intent(this, AlarmActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(AlarmActivity.EXTRA_REMINDER_ID, reminderId)
+            putExtra(AlarmActivity.EXTRA_ALARM_ID, alarmId)
+            putExtra(AlarmActivity.EXTRA_TITLE, title)
+            putExtra(AlarmActivity.EXTRA_NOTE, note)
             putExtra(AlarmActivity.EXTRA_ALARM_TIME, alarmTime)
             putExtra(AlarmActivity.EXTRA_ALARM_KIND, kind.name)
         }
@@ -192,24 +234,23 @@ class AlarmAlertService : Service() {
     }
 
     private fun launchAlarmActivity(activityPendingIntent: PendingIntent) {
-        runCatching {
-            activityPendingIntent.send(
-                this,
-                0,
-                null,
-                null,
-                null,
-                null,
-                senderBackgroundActivityLaunchOptions()
-            )
-        }
+        activityPendingIntent.send(
+            this,
+            0,
+            null,
+            null,
+            null,
+            null,
+            senderBackgroundActivityLaunchOptions()
+        )
+        Log.d(TAG, "已请求启动全屏提醒页；若系统拦截需检查 ActivityTaskManager 的 BAL 日志")
     }
 
     private fun creatorBackgroundActivityLaunchOptions(): Bundle? =
         if (AlarmAlertLaunchPolicy.needsBackgroundActivityLaunchOptions(Build.VERSION.SDK_INT)) {
             ActivityOptions.makeBasic().apply {
                 pendingIntentCreatorBackgroundActivityStartMode =
-                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                    backgroundActivityStartMode()
             }.toBundle()
         } else {
             null
@@ -219,7 +260,7 @@ class AlarmAlertService : Service() {
         if (AlarmAlertLaunchPolicy.needsBackgroundActivityLaunchOptions(Build.VERSION.SDK_INT)) {
             ActivityOptions.makeBasic().apply {
                 setPendingIntentBackgroundActivityStartMode(
-                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                    backgroundActivityStartMode()
                 )
             }.toBundle()
         } else {
@@ -246,11 +287,43 @@ class AlarmAlertService : Service() {
 
     private fun startAlert(sound: Boolean, vibrate: Boolean) {
         if (sound && ringtone == null) {
-            val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-            ringtone = RingtoneManager.getRingtone(this, alarmUri)?.apply {
-                isLooping = true
-                play()
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val alarmVolume = audioManager.getStreamVolume(AudioManager.STREAM_ALARM)
+            val maxAlarmVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+            val candidateUris = linkedSetOf(
+                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
+                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            ).filterNotNull()
+            var selectedUri: String? = null
+            ringtone = candidateUris.firstNotNullOfOrNull { uri ->
+                runCatching {
+                    RingtoneManager.getRingtone(this, uri)?.apply {
+                        audioAttributes = AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ALARM)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build()
+                        isLooping = true
+                        volume = 1f
+                        play()
+                    }?.takeIf { candidate ->
+                        candidate.isPlaying.also { playing ->
+                            if (playing) selectedUri = uri.toString() else candidate.stop()
+                        }
+                    }
+                }.onFailure {
+                    Log.e(TAG, "铃声播放失败，尝试下一个系统铃声 uri=$uri", it)
+                }.getOrNull()
+            }
+            Log.d(
+                TAG,
+                "响铃启动 uri=$selectedUri alarmVolume=$alarmVolume/$maxAlarmVolume " +
+                    "ringtoneCreated=${ringtone != null} isPlaying=${ringtone?.isPlaying == true}"
+            )
+            if (ringtone == null) {
+                Log.e(TAG, "系统闹钟铃声和通知铃声均无法播放")
+            }
+            if (alarmVolume == 0) {
+                Log.w(TAG, "系统闹钟音量为 0，App 已请求响铃但系统输出仍会静音")
             }
         }
         if (vibrate && vibrator == null) {
@@ -259,12 +332,69 @@ class AlarmAlertService : Service() {
         }
     }
 
-    private fun stopAlert() {
+    private fun acknowledgeAlert(intent: Intent) {
+        val reminderId = intent.getLongExtra(EXTRA_REMINDER_ID, -1L)
+        val alarmId = intent.getIntExtra(EXTRA_ALARM_ID, currentNotificationId)
+        val title = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { "提醒事项" }
+        val previewText = intent.getStringExtra(EXTRA_NOTE).orEmpty().ifBlank { "提醒时间到了" }
+        if (
+            !AlarmAlertConcurrencyPolicy.actionTargetsCurrent(
+                currentReminderId?.let { currentNotificationId },
+                alarmId
+            )
+        ) {
+            Log.w(TAG, "忽略旧提醒的关闭操作 actionAlarmId=$alarmId currentAlarmId=$currentNotificationId")
+            return
+        }
         stopRingtoneAndVibration()
-        NotificationManagerCompat.from(this).cancel(currentNotificationId)
+        NotificationManagerCompat.from(this).cancel(alarmId)
         stopForeground(STOP_FOREGROUND_REMOVE)
+        if (
+            reminderId >= 0 &&
+            AlarmAlertInteractionPolicy.shouldKeepNotification(AlarmAlertAction.CLOSE)
+        ) {
+            notificationHelper.showRetainedAlertNotification(
+                reminderId = reminderId,
+                alarmId = alarmId,
+                title = title,
+                previewText = previewText
+            )
+        }
+        clearCurrentAlert()
         stopSelf()
     }
+
+    private fun retainCurrentAlert() {
+        val reminderId = currentReminderId ?: return
+        val content = currentContent ?: return
+        val alarmId = currentNotificationId
+        stopRingtoneAndVibration()
+        NotificationManagerCompat.from(this).cancel(alarmId)
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        notificationHelper.showRetainedAlertNotification(
+            reminderId = reminderId,
+            alarmId = alarmId,
+            title = content.title,
+            previewText = content.previewText
+        )
+        clearCurrentAlert()
+    }
+
+    private fun clearCurrentAlert() {
+        currentReminderId = null
+        currentContent = null
+        currentNotificationId = FALLBACK_NOTIFICATION_ID
+    }
+
+    private fun backgroundActivityStartMode(): Int =
+        when (AlarmAlertLaunchPolicy.backgroundLaunchMode(Build.VERSION.SDK_INT)) {
+            AlarmBackgroundLaunchMode.ALLOW_ALWAYS ->
+                ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_ALWAYS
+            AlarmBackgroundLaunchMode.ALLOW_WHILE_ALARM_ACTIVE ->
+                ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+            AlarmBackgroundLaunchMode.LEGACY ->
+                ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_SYSTEM_DEFINED
+        }
 
     private fun stopRingtoneAndVibration() {
         ringtone?.stop()
@@ -318,10 +448,22 @@ class AlarmAlertService : Service() {
                 putExtra(EXTRA_ALARM_KIND, kind.name)
             }
 
-        fun stopIntent(context: Context, alarmId: Int): Intent =
+        fun stopIntent(
+            context: Context,
+            reminderId: Long,
+            alarmId: Int,
+            title: String,
+            note: String?,
+            kind: AlarmAlertKind
+        ): Intent =
             Intent(context, AlarmAlertService::class.java).apply {
                 action = ACTION_STOP
+                val content = AlarmAlertContentFormatter.format(title, note, kind)
+                putExtra(EXTRA_REMINDER_ID, reminderId)
                 putExtra(EXTRA_ALARM_ID, alarmId)
+                putExtra(EXTRA_TITLE, content.title)
+                putExtra(EXTRA_NOTE, content.previewText)
+                putExtra(EXTRA_ALARM_KIND, kind.name)
             }
     }
 }

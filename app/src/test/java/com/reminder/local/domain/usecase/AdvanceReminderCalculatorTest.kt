@@ -28,6 +28,18 @@ class AdvanceReminderCalculatorTest {
             AdvanceReminderCalculator.computeAdvanceTrigger(trigger, AdvanceReminderType.FIVE_MINUTES)
         )
         assertEquals(
+            millis(2026, 7, 7, 9, 20),
+            AdvanceReminderCalculator.computeAdvanceTrigger(trigger, AdvanceReminderType.TEN_MINUTES)
+        )
+        assertEquals(
+            millis(2026, 7, 7, 6, 30),
+            AdvanceReminderCalculator.computeAdvanceTrigger(trigger, AdvanceReminderType.THREE_HOURS)
+        )
+        assertEquals(
+            millis(2026, 6, 23, 9, 30),
+            AdvanceReminderCalculator.computeAdvanceTrigger(trigger, AdvanceReminderType.TWO_WEEKS)
+        )
+        assertEquals(
             millis(2026, 7, 6, 9, 30),
             AdvanceReminderCalculator.computeAdvanceTrigger(trigger, AdvanceReminderType.ONE_DAY)
         )

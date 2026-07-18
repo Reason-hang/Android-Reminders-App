@@ -2,9 +2,11 @@ package com.reminder.local.ui.screen.edit
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -69,6 +71,8 @@ import com.reminder.local.domain.model.RepeatActionScope
 import com.reminder.local.domain.model.RepeatType
 import com.reminder.local.ui.components.ConfirmDialog
 import com.reminder.local.ui.components.RepeatScopeDialog
+import com.reminder.local.ui.components.WheelItemPosition
+import com.reminder.local.ui.components.WheelPickerSelection
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -569,55 +573,58 @@ private fun WheelNumberColumn(
     onSelected: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val paddingItems = 2
     val itemHeight = 56.dp
     val selectedIndex = values.indexOf(selected).coerceAtLeast(0)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = selectedIndex)
     val coroutineScope = rememberCoroutineScope()
-    val centeredIndex by remember {
+    val snapFlingBehavior = rememberSnapFlingBehavior(lazyListState = listState)
+    val centeredIndex by remember(listState) {
         derivedStateOf {
-            listState.firstVisibleItemIndex.coerceIn(0, values.lastIndex)
+            val layoutInfo = listState.layoutInfo
+            WheelPickerSelection.nearestIndex(
+                viewportStartOffset = layoutInfo.viewportStartOffset,
+                viewportEndOffset = layoutInfo.viewportEndOffset,
+                items = layoutInfo.visibleItemsInfo.map { item ->
+                    WheelItemPosition(item.index, item.offset, item.size)
+                }
+            )?.coerceIn(values.indices) ?: selectedIndex
         }
     }
 
     LaunchedEffect(selected) {
-        listState.scrollToItem(selectedIndex)
-    }
-    LaunchedEffect(listState.isScrollInProgress) {
-        if (!listState.isScrollInProgress) {
-            onSelected(values[centeredIndex])
-            listState.animateScrollToItem(centeredIndex)
+        if (!listState.isScrollInProgress && centeredIndex != selectedIndex) {
+            listState.animateScrollToItem(selectedIndex)
         }
+    }
+    LaunchedEffect(centeredIndex) {
+        onSelected(values[centeredIndex])
     }
 
     LazyColumn(
         state = listState,
         modifier = modifier.height(itemHeight * 5),
+        contentPadding = PaddingValues(vertical = itemHeight * 2),
+        flingBehavior = snapFlingBehavior,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        items(values.size + paddingItems * 2) { index ->
-            val valueIndex = index - paddingItems
-            if (valueIndex !in values.indices) {
-                Spacer(modifier = Modifier.height(itemHeight))
-            } else {
-                val value = values[valueIndex]
-                val isSelected = value == selected
-                Text(
-                    text = "%02d".format(value),
-                    modifier = Modifier
-                        .height(itemHeight)
-                        .fillMaxWidth()
-                        .clickable {
-                            onSelected(value)
-                            coroutineScope.launch { listState.animateScrollToItem(valueIndex) }
-                        }
-                        .padding(top = 8.dp)
-                        .alpha(if (isSelected) 1f else 0.42f),
-                    textAlign = TextAlign.Center,
-                    fontSize = if (isSelected) 32.sp else 26.sp,
-                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
-                )
-            }
+        items(values.size) { index ->
+            val value = values[index]
+            val isSelected = index == centeredIndex
+            Text(
+                text = "%02d".format(value),
+                modifier = Modifier
+                    .height(itemHeight)
+                    .fillMaxWidth()
+                    .clickable {
+                        onSelected(value)
+                        coroutineScope.launch { listState.animateScrollToItem(index) }
+                    }
+                    .padding(top = 8.dp)
+                    .alpha(if (isSelected) 1f else 0.42f),
+                textAlign = TextAlign.Center,
+                fontSize = if (isSelected) 32.sp else 26.sp,
+                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+            )
         }
     }
 }
@@ -630,55 +637,58 @@ private fun <T> WheelTextColumn(
     onSelected: (T) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val paddingItems = 2
     val itemHeight = 56.dp
     val selectedIndex = values.indexOf(selected).coerceAtLeast(0)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = selectedIndex)
     val coroutineScope = rememberCoroutineScope()
-    val centeredIndex by remember {
+    val snapFlingBehavior = rememberSnapFlingBehavior(lazyListState = listState)
+    val centeredIndex by remember(listState) {
         derivedStateOf {
-            listState.firstVisibleItemIndex.coerceIn(0, values.lastIndex)
+            val layoutInfo = listState.layoutInfo
+            WheelPickerSelection.nearestIndex(
+                viewportStartOffset = layoutInfo.viewportStartOffset,
+                viewportEndOffset = layoutInfo.viewportEndOffset,
+                items = layoutInfo.visibleItemsInfo.map { item ->
+                    WheelItemPosition(item.index, item.offset, item.size)
+                }
+            )?.coerceIn(values.indices) ?: selectedIndex
         }
     }
 
     LaunchedEffect(selected) {
-        listState.scrollToItem(selectedIndex)
-    }
-    LaunchedEffect(listState.isScrollInProgress) {
-        if (!listState.isScrollInProgress) {
-            onSelected(values[centeredIndex])
-            listState.animateScrollToItem(centeredIndex)
+        if (!listState.isScrollInProgress && centeredIndex != selectedIndex) {
+            listState.animateScrollToItem(selectedIndex)
         }
+    }
+    LaunchedEffect(centeredIndex) {
+        onSelected(values[centeredIndex])
     }
 
     LazyColumn(
         state = listState,
         modifier = modifier.height(itemHeight * 5),
+        contentPadding = PaddingValues(vertical = itemHeight * 2),
+        flingBehavior = snapFlingBehavior,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        items(values.size + paddingItems * 2) { index ->
-            val valueIndex = index - paddingItems
-            if (valueIndex !in values.indices) {
-                Spacer(modifier = Modifier.height(itemHeight))
-            } else {
-                val value = values[valueIndex]
-                val isSelected = value == selected
-                Text(
-                    text = label(value),
-                    modifier = Modifier
-                        .height(itemHeight)
-                        .fillMaxWidth()
-                        .clickable {
-                            onSelected(value)
-                            coroutineScope.launch { listState.animateScrollToItem(valueIndex) }
-                        }
-                        .padding(top = 8.dp)
-                        .alpha(if (isSelected) 1f else 0.42f),
-                    textAlign = TextAlign.Center,
-                    fontSize = if (isSelected) 32.sp else 26.sp,
-                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
-                )
-            }
+        items(values.size) { index ->
+            val value = values[index]
+            val isSelected = index == centeredIndex
+            Text(
+                text = label(value),
+                modifier = Modifier
+                    .height(itemHeight)
+                    .fillMaxWidth()
+                    .clickable {
+                        onSelected(value)
+                        coroutineScope.launch { listState.animateScrollToItem(index) }
+                    }
+                    .padding(top = 8.dp)
+                    .alpha(if (isSelected) 1f else 0.42f),
+                textAlign = TextAlign.Center,
+                fontSize = if (isSelected) 32.sp else 26.sp,
+                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+            )
         }
     }
 }

@@ -2,9 +2,13 @@ package com.reminder.local.notification
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.reminder.local.MainActivity
 import com.reminder.local.R
 import com.reminder.local.domain.model.Reminder
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -61,5 +65,39 @@ class NotificationHelper @Inject constructor(
     fun cancelNotification(reminder: Reminder) {
         NotificationManagerCompat.from(context).cancel(reminder.alarmId)
         NotificationManagerCompat.from(context).cancel(reminder.alarmId + 2)
+    }
+
+    fun showRetainedAlertNotification(
+        reminderId: Long,
+        alarmId: Int,
+        title: String,
+        previewText: String
+    ) {
+        val contentIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            data = Uri.parse("reminder://$reminderId/view")
+            putExtra(MainActivity.EXTRA_OPEN_REMINDER_ID, reminderId)
+        }
+        val contentPendingIntent = PendingIntent.getActivity(
+            context,
+            alarmId xor 0x08000000,
+            contentIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_FULLSCREEN_ALERT)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle(title)
+            .setContentText(previewText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(previewText))
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setContentIntent(contentPendingIntent)
+            .setAutoCancel(false)
+            .setOngoing(false)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .build()
+
+        NotificationManagerCompat.from(context).notify(alarmId, notification)
     }
 }

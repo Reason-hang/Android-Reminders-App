@@ -13,6 +13,8 @@ import com.reminder.local.domain.model.Reminder
 import com.reminder.local.domain.usecase.AdvanceReminderCalculator
 import com.reminder.local.receiver.AlarmReceiver
 import com.reminder.local.service.AlarmAlertKind
+import com.reminder.local.service.AlarmAlertLaunchPolicy
+import com.reminder.local.service.AlarmBackgroundLaunchMode
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -111,6 +113,9 @@ class AlarmSchedulerImpl @Inject constructor(
         val intent = Intent(context, AlarmActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(AlarmActivity.EXTRA_REMINDER_ID, reminder.id)
+            putExtra(AlarmActivity.EXTRA_ALARM_ID, reminder.alarmId)
+            putExtra(AlarmActivity.EXTRA_TITLE, reminder.title)
+            putExtra(AlarmActivity.EXTRA_NOTE, reminder.note)
             putExtra(AlarmActivity.EXTRA_ALARM_TIME, reminder.effectiveTime)
             // 2026-07 第二轮复查修复：这里以前无论 DUE / ADVANCE / 稍后提醒都写死传 DUE，
             // 只影响系统状态栏"下一个闹钟"图标被手动点开时的预览文案（不影响到点后的真实提醒），
@@ -147,15 +152,25 @@ class AlarmSchedulerImpl @Inject constructor(
         )
 
     private fun creatorBackgroundActivityLaunchOptions(): Bundle? =
-        if (Build.VERSION.SDK_INT >= 34) {
+        if (AlarmAlertLaunchPolicy.needsBackgroundActivityLaunchOptions(Build.VERSION.SDK_INT)) {
             runCatching {
                 ActivityOptions.makeBasic().apply {
                     pendingIntentCreatorBackgroundActivityStartMode =
-                        ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+                        backgroundActivityStartMode()
                 }.toBundle()
             }.getOrNull()
         } else {
             null
+        }
+
+    private fun backgroundActivityStartMode(): Int =
+        when (AlarmAlertLaunchPolicy.backgroundLaunchMode(Build.VERSION.SDK_INT)) {
+            AlarmBackgroundLaunchMode.ALLOW_ALWAYS ->
+                ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_ALWAYS
+            AlarmBackgroundLaunchMode.ALLOW_WHILE_ALARM_ACTIVE ->
+                ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+            AlarmBackgroundLaunchMode.LEGACY ->
+                ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_SYSTEM_DEFINED
         }
 
     companion object {

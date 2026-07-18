@@ -21,6 +21,7 @@ enum class ReminderStatus {
 enum class RepeatType(val label: String) {
     NONE("不重复"),
     HOURLY("每小时"),
+    EVERY_FIVE_HOURS("每隔5小时"),
     DAILY("每天"),
     WORKDAYS("工作日"),
     WEEKLY("每周"),
@@ -36,13 +37,16 @@ enum class RepeatType(val label: String) {
 enum class AdvanceReminderType(val label: String) {
     NONE("无"),
     FIVE_MINUTES("5分钟前"),
+    TEN_MINUTES("10分钟前"),
     FIFTEEN_MINUTES("15分钟前"),
     THIRTY_MINUTES("30分钟前"),
     ONE_HOUR("一小时前"),
     TWO_HOURS("二小时前"),
+    THREE_HOURS("三小时前"),
     ONE_DAY("一天前"),
     TWO_DAYS("两天前"),
     ONE_WEEK("一周前"),
+    TWO_WEEKS("两周前"),
     ONE_MONTH("一个月前"),
     CUSTOM("自定义")
 }

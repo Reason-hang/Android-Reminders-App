@@ -28,6 +28,7 @@ object RepeatCalculator {
         val from = Instant.ofEpochMilli(fromTime).atZone(zone)
         return when (type) {
             RepeatType.HOURLY -> from.plusHours(1).toInstant().toEpochMilli()
+            RepeatType.EVERY_FIVE_HOURS -> from.plusHours(5).toInstant().toEpochMilli()
             RepeatType.DAILY -> from.plusDays(1).toInstant().toEpochMilli()
             RepeatType.WORKDAYS -> computeNextWorkday(fromTime)
             RepeatType.WEEKLY -> from.plusWeeks(1).toInstant().toEpochMilli()

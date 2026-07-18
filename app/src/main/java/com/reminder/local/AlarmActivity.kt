@@ -42,6 +42,7 @@ import com.reminder.local.service.AlarmAlertKind
 import com.reminder.local.service.AlarmAlertService
 import com.reminder.local.ui.theme.ReminderAppTheme
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
@@ -59,18 +60,17 @@ class AlarmActivity : ComponentActivity() {
     private val reminderState = mutableStateOf<Reminder?>(null)
     private val alarmTimeState = mutableStateOf<Long?>(null)
     private val alarmKindState = mutableStateOf(AlarmAlertKind.DUE)
+    private var loadReminderJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         configureAlarmWindow()
 
         val reminderId = intent.getLongExtra(EXTRA_REMINDER_ID, -1L)
+        Log.d(TAG, "onCreate reminderId=$reminderId")
         alarmTimeState.value = intent.getLongExtra(EXTRA_ALARM_TIME, -1L).takeIf { it > 0L }
         alarmKindState.value = AlarmAlertKind.fromWireValue(intent.getStringExtra(EXTRA_ALARM_KIND))
-        lifecycleScope.launch {
-            val reminder = reminderRepository.getById(reminderId)
-            reminderState.value = reminder
-        }
+        loadReminder(reminderId)
 
         setContent {
             ReminderAppTheme {
@@ -93,13 +93,18 @@ class AlarmActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        stopAlert()
         val reminderId = intent.getLongExtra(EXTRA_REMINDER_ID, -1L)
+        Log.d(TAG, "onNewIntent reminderId=$reminderId")
         alarmTimeState.value = intent.getLongExtra(EXTRA_ALARM_TIME, -1L).takeIf { it > 0L }
         alarmKindState.value = AlarmAlertKind.fromWireValue(intent.getStringExtra(EXTRA_ALARM_KIND))
-        lifecycleScope.launch {
-            val reminder = reminderRepository.getById(reminderId)
-            reminderState.value = reminder
+        loadReminder(reminderId)
+    }
+
+    private fun loadReminder(reminderId: Long) {
+        loadReminderJob?.cancel()
+        reminderState.value = null
+        loadReminderJob = lifecycleScope.launch {
+            reminderState.value = reminderRepository.getById(reminderId)
         }
     }
 
@@ -122,8 +127,22 @@ class AlarmActivity : ComponentActivity() {
 
     private fun closeAlertOnly() {
         val reminder = reminderState.value
-        stopAlert()
-        if (reminder != null) notificationHelper.cancelNotification(reminder)
+        val reminderId = reminder?.id ?: intent.getLongExtra(EXTRA_REMINDER_ID, -1L)
+        val alarmId = reminder?.alarmId ?: intent.getIntExtra(EXTRA_ALARM_ID, -1)
+        if (reminderId >= 0L && alarmId >= 0) {
+            startService(
+                AlarmAlertService.stopIntent(
+                    context = this,
+                    reminderId = reminderId,
+                    alarmId = alarmId,
+                    title = reminder?.title ?: intent.getStringExtra(EXTRA_TITLE).orEmpty(),
+                    note = reminder?.note ?: intent.getStringExtra(EXTRA_NOTE),
+                    kind = alarmKindState.value
+                )
+            )
+        } else {
+            stopAlert()
+        }
         finish()
     }
 
@@ -167,6 +186,9 @@ class AlarmActivity : ComponentActivity() {
     companion object {
         private const val TAG = "AlarmActivity"
         const val EXTRA_REMINDER_ID = "extra_alarm_reminder_id"
+        const val EXTRA_ALARM_ID = "extra_alarm_id"
+        const val EXTRA_TITLE = "extra_title"
+        const val EXTRA_NOTE = "extra_note"
         const val EXTRA_ALARM_TIME = "extra_alarm_time"
         const val EXTRA_ALARM_KIND = "extra_alarm_kind"
     }

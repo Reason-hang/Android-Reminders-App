@@ -28,6 +28,15 @@ class RepeatCalculatorTest {
     }
 
     @Test
+    fun everyFiveHoursAddsFiveHours() {
+        val trigger = millis(2026, 7, 7, 21, 30)
+
+        val next = RepeatCalculator.computeNext(trigger, trigger, RepeatType.EVERY_FIVE_HOURS)
+
+        assertEquals(millis(2026, 7, 8, 2, 30), next)
+    }
+
+    @Test
     fun weeklySundayMovesToNextSundayAtOriginalTime() {
         val trigger = millis(2026, 7, 7, 9, 30)
 
