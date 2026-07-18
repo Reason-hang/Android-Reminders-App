@@ -65,6 +65,12 @@ object PermissionUtils {
             putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
         }
 
+    fun notificationChannelSettingsIntent(context: Context, channelId: String): Intent =
+        Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {
+            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            putExtra(Settings.EXTRA_CHANNEL_ID, channelId)
+        }
+
     /**
      * MIUI/HyperOS 的应用权限管理页（锁屏显示、悬浮窗/后台弹出界面等都在这里，
      * 而且这几项和"省电策略""自启动"是完全独立的开关，缺一样都可能导致：

@@ -1,13 +1,21 @@
 package com.reminder.local.notification
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.net.Uri
+import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.reminder.local.MainActivity
 import com.reminder.local.R
 import com.reminder.local.domain.model.Reminder
@@ -39,7 +47,10 @@ class NotificationHelper @Inject constructor(
 ) {
 
     companion object {
-        const val CHANNEL_FULLSCREEN_ALERT = "reminder_fullscreen_alert_v2"
+        const val CHANNEL_FULLSCREEN_ALERT = AlarmNotificationPolicy.STRONG_ALERT_CHANNEL_ID
+        const val CHANNEL_ALARM_SERVICE = AlarmNotificationPolicy.FOREGROUND_SERVICE_CHANNEL_ID
+        const val CHANNEL_NOISY_FALLBACK = AlarmNotificationPolicy.NOISY_FALLBACK_CHANNEL_ID
+        private const val TAG = "NotificationHelper"
     }
 
     fun createNotificationChannels() {
@@ -59,7 +70,72 @@ class NotificationHelper @Inject constructor(
             setShowBadge(true)
         }
 
-        manager.createNotificationChannels(listOf(fullScreenAlert))
+        val alarmService = NotificationChannel(
+            CHANNEL_ALARM_SERVICE,
+            "提醒运行服务",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = "仅在提醒正在响铃时维持后台运行"
+            enableVibration(false)
+            setSound(null, null)
+            lockscreenVisibility = NotificationCompat.VISIBILITY_SECRET
+            setShowBadge(false)
+        }
+
+        val alarmAudioAttributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_ALARM)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+        fun fallbackChannel(id: String, name: String, sound: Boolean, vibrate: Boolean) =
+            NotificationChannel(id, name, NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "强提醒服务被系统阻止时的备用通知"
+                enableVibration(vibrate)
+                if (vibrate) vibrationPattern = longArrayOf(0, 800, 800, 800)
+                setSound(
+                    if (sound) RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM) else null,
+                    if (sound) alarmAudioAttributes else null
+                )
+                lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
+                setShowBadge(true)
+            }
+        val fallbackChannels = listOf(
+            fallbackChannel(
+                AlarmNotificationPolicy.NOISY_FALLBACK_CHANNEL_ID,
+                "强提醒备用（响铃和震动）",
+                sound = true,
+                vibrate = true
+            ),
+            fallbackChannel(
+                AlarmNotificationPolicy.SOUND_FALLBACK_CHANNEL_ID,
+                "强提醒备用（仅响铃）",
+                sound = true,
+                vibrate = false
+            ),
+            fallbackChannel(
+                AlarmNotificationPolicy.VIBRATION_FALLBACK_CHANNEL_ID,
+                "强提醒备用（仅震动）",
+                sound = false,
+                vibrate = true
+            ),
+            fallbackChannel(
+                AlarmNotificationPolicy.SILENT_FALLBACK_CHANNEL_ID,
+                "强提醒备用（静音）",
+                sound = false,
+                vibrate = false
+            )
+        )
+
+        manager.createNotificationChannels(listOf(fullScreenAlert, alarmService) + fallbackChannels)
+        (listOf(CHANNEL_FULLSCREEN_ALERT, CHANNEL_ALARM_SERVICE) + fallbackChannels.map { it.id })
+            .forEach { id ->
+                manager.getNotificationChannel(id)?.let { channel ->
+                    Log.i(
+                        TAG,
+                        "channel=$id importance=${channel.importance} " +
+                            "lockscreen=${channel.lockscreenVisibility} sound=${channel.sound}"
+                    )
+                }
+            }
     }
 
     fun cancelNotification(reminder: Reminder) {
@@ -67,6 +143,7 @@ class NotificationHelper @Inject constructor(
         NotificationManagerCompat.from(context).cancel(reminder.alarmId + 2)
     }
 
+    @SuppressLint("MissingPermission")
     fun showRetainedAlertNotification(
         reminderId: Long,
         alarmId: Int,
@@ -98,6 +175,14 @@ class NotificationHelper @Inject constructor(
             .setSilent(true)
             .build()
 
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            Log.w(TAG, "通知权限未授权，无法保留提醒记录 alarmId=$alarmId")
+            return
+        }
         NotificationManagerCompat.from(context).notify(alarmId, notification)
     }
 }

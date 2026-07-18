@@ -17,4 +17,10 @@ class AlarmTriggerPolicyTest {
         assertFalse(AlarmTriggerPolicy.shouldProgressRepeatingReminder(AlarmReceiver.KIND_ADVANCE))
         assertTrue(AlarmTriggerPolicy.shouldProgressRepeatingReminder(AlarmReceiver.KIND_DUE))
     }
+
+    @Test
+    fun advanceAndDueFallbacksRemainAudibleStrongAlerts() {
+        assertTrue(AlarmTriggerPolicy.shouldUseNoisyFallback(AlarmReceiver.KIND_ADVANCE))
+        assertTrue(AlarmTriggerPolicy.shouldUseNoisyFallback(AlarmReceiver.KIND_DUE))
+    }
 }

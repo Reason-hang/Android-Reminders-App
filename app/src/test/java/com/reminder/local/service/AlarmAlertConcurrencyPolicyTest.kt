@@ -19,4 +19,10 @@ class AlarmAlertConcurrencyPolicyTest {
         assertTrue(AlarmAlertConcurrencyPolicy.actionTargetsCurrent(202, 202))
         assertTrue(AlarmAlertConcurrencyPolicy.actionTargetsCurrent(null, 101))
     }
+
+    @Test
+    fun incomingOccurrenceRestartsPlaybackWhenAnAlertIsAlreadyActive() {
+        assertTrue(AlarmAlertConcurrencyPolicy.shouldRestartPlayback(101))
+        assertFalse(AlarmAlertConcurrencyPolicy.shouldRestartPlayback(null))
+    }
 }

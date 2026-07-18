@@ -14,8 +14,8 @@ android {
         applicationId = "com.reminder.local"
         minSdk = 31
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -74,7 +74,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
 
     // Navigation
-    implementation("androidx.navigation:navigation-compose:2.8.4")
+    implementation("androidx.navigation:navigation-compose:2.9.8")
 
     // Room
     implementation("androidx.room:room-runtime:2.8.3")

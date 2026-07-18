@@ -29,6 +29,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.reminder.local.BuildConfig
+import com.reminder.local.notification.NotificationHelper
 import com.reminder.local.util.PermissionUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -147,6 +148,14 @@ fun SettingsScreen(
             TextButton(onClick = {
                 context.startActivity(PermissionUtils.notificationSettingsIntent(context))
             }) { Text("打开通知设置（锁屏显示通知）") }
+            TextButton(onClick = {
+                context.startActivity(
+                    PermissionUtils.notificationChannelSettingsIntent(
+                        context,
+                        NotificationHelper.CHANNEL_FULLSCREEN_ALERT
+                    )
+                )
+            }) { Text("打开强提醒渠道（锁屏内容/横幅）") }
             TextButton(onClick = {
                 runCatching {
                     context.startActivity(PermissionUtils.miuiAppPermissionEditorIntent(context))

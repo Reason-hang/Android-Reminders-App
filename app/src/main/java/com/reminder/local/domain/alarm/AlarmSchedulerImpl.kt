@@ -5,16 +5,17 @@ import android.app.ActivityOptions
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import com.reminder.local.AlarmActivity
 import com.reminder.local.domain.model.Reminder
 import com.reminder.local.domain.usecase.AdvanceReminderCalculator
 import com.reminder.local.receiver.AlarmReceiver
 import com.reminder.local.service.AlarmAlertKind
-import com.reminder.local.service.AlarmAlertLaunchPolicy
-import com.reminder.local.service.AlarmBackgroundLaunchMode
+import com.reminder.local.service.AlarmIntentIdentity
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -60,6 +61,12 @@ class AlarmSchedulerImpl @Inject constructor(
                 kind = AlarmReceiver.KIND_ADVANCE,
                 requestCode = advanceAlarmRequestCode(reminder.alarmId)
             )
+        } else {
+            Log.i(
+                TAG,
+                "提前提醒未注册 reminderId=${reminder.id} advanceAt=$advanceAt " +
+                    "effectiveTime=${reminder.effectiveTime} type=${reminder.advanceReminderType}"
+            )
         }
     }
 
@@ -69,6 +76,11 @@ class AlarmSchedulerImpl @Inject constructor(
         alarmManager.setAlarmClock(
             AlarmManager.AlarmClockInfo(triggerAt, showIntent),
             operation
+        )
+        Log.i(
+            TAG,
+            "闹钟已注册 reminderId=${reminder.id} alarmId=${reminder.alarmId} " +
+                "kind=$kind requestCode=$requestCode triggerAt=$triggerAt"
         )
     }
 
@@ -98,6 +110,7 @@ class AlarmSchedulerImpl @Inject constructor(
 
     private fun buildOperationPendingIntent(reminder: Reminder, kind: String, requestCode: Int): PendingIntent {
         val intent = Intent(context, AlarmReceiver::class.java).apply {
+            data = Uri.parse(AlarmIntentIdentity.trigger(reminder.id, kind))
             putExtra(AlarmReceiver.EXTRA_REMINDER_ID, reminder.id)
             putExtra(AlarmReceiver.EXTRA_ALARM_KIND, kind)
         }
@@ -112,6 +125,7 @@ class AlarmSchedulerImpl @Inject constructor(
     private fun buildShowPendingIntent(reminder: Reminder, kind: String): PendingIntent {
         val intent = Intent(context, AlarmActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            data = Uri.parse(AlarmIntentIdentity.show(reminder.id, kind))
             putExtra(AlarmActivity.EXTRA_REMINDER_ID, reminder.id)
             putExtra(AlarmActivity.EXTRA_ALARM_ID, reminder.alarmId)
             putExtra(AlarmActivity.EXTRA_TITLE, reminder.title)
@@ -125,21 +139,22 @@ class AlarmSchedulerImpl @Inject constructor(
                 if (kind == AlarmReceiver.KIND_ADVANCE) AlarmAlertKind.ADVANCE.name else AlarmAlertKind.DUE.name
             )
         }
+        val requestCode = showActivityRequestCode(reminder.alarmId, kind)
         val options = creatorBackgroundActivityLaunchOptions()
         return if (options != null) {
             runCatching {
                 PendingIntent.getActivity(
                     context,
-                    reminder.alarmId,
+                    requestCode,
                     intent,
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
                     options
                 )
             }.getOrElse {
-                buildActivityPendingIntentWithoutOptions(reminder.alarmId, intent)
+                buildActivityPendingIntentWithoutOptions(requestCode, intent)
             }
         } else {
-            buildActivityPendingIntentWithoutOptions(reminder.alarmId, intent)
+            buildActivityPendingIntentWithoutOptions(requestCode, intent)
         }
     }
 
@@ -152,7 +167,7 @@ class AlarmSchedulerImpl @Inject constructor(
         )
 
     private fun creatorBackgroundActivityLaunchOptions(): Bundle? =
-        if (AlarmAlertLaunchPolicy.needsBackgroundActivityLaunchOptions(Build.VERSION.SDK_INT)) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             runCatching {
                 ActivityOptions.makeBasic().apply {
                     pendingIntentCreatorBackgroundActivityStartMode =
@@ -164,16 +179,14 @@ class AlarmSchedulerImpl @Inject constructor(
         }
 
     private fun backgroundActivityStartMode(): Int =
-        when (AlarmAlertLaunchPolicy.backgroundLaunchMode(Build.VERSION.SDK_INT)) {
-            AlarmBackgroundLaunchMode.ALLOW_ALWAYS ->
-                ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_ALWAYS
-            AlarmBackgroundLaunchMode.ALLOW_WHILE_ALARM_ACTIVE ->
-                ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
-            AlarmBackgroundLaunchMode.LEGACY ->
-                ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_SYSTEM_DEFINED
+        if (Build.VERSION.SDK_INT >= 36) {
+            ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_ALWAYS
+        } else {
+            ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
         }
 
     companion object {
+        private const val TAG = "AlarmScheduler"
         /**
          * 生成一个稳定的 Int alarmId，避免数据库自增 Long 主键直接转 Int 溢出冲突。
          *
@@ -189,5 +202,14 @@ class AlarmSchedulerImpl @Inject constructor(
         fun advanceAlarmRequestCode(alarmId: Int): Int = alarmId xor 0x40000000
 
         fun snoozeAlarmRequestCode(alarmId: Int): Int = alarmId xor 0x20000000
+
+        fun showActivityRequestCode(alarmId: Int, kind: String): Int {
+            val base = alarmId xor 0x08000000
+            return if (kind == AlarmReceiver.KIND_ADVANCE) {
+                base xor 0x40000000
+            } else {
+                base
+            }
+        }
     }
 }

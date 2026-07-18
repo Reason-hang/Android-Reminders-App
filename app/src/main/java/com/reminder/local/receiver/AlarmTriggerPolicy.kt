@@ -6,4 +6,6 @@ object AlarmTriggerPolicy {
 
     fun shouldProgressRepeatingReminder(kind: String): Boolean =
         kind == AlarmReceiver.KIND_DUE
+
+    fun shouldUseNoisyFallback(kind: String): Boolean = shouldStartStrongAlert(kind)
 }

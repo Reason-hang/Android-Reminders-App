@@ -2,7 +2,8 @@
 
 ## 验证范围
 
-- 强提醒响铃、全屏启动、关闭后通知保留。
+- 提前/到点两次强提醒调度、响铃/震动降级、全屏启动、关闭后通知保留。
+- 锁屏用户通知与前台服务通知分离、公开内容预览和通知渠道版本化。
 - 多提醒重叠和 Activity 异步加载竞态。
 - 双列小时/分钟滚轮与中心项吸附。
 - 新增提前提醒选项和“每隔 5 小时”重复。
@@ -22,13 +23,14 @@ ANDROID_HOME=/opt/homebrew/share/android-commandlinetools \
 
 | 指标 | 结果 |
 |---|---|
-| JVM 测试类 | 9 |
-| JVM 测试用例 | 29 |
+| JVM 测试类 | 13 |
+| JVM 测试用例 | 41 |
 | 失败 | 0 |
 | 错误 | 0 |
 | 跳过 | 0 |
 | Release 构建 | 通过 |
 | Lint Vital | 通过 |
+| 完整 Debug Lint | 通过，错误 0 |
 
 新增回归覆盖：
 
@@ -38,15 +40,19 @@ ANDROID_HOME=/opt/homebrew/share/android-commandlinetools \
 - 时间滚轮选择最接近视口中心的项目。
 - 10 分钟前、3 小时前、2 周前。
 - 每隔 5 小时。
+- 提前与到点的 AlarmManager 操作和系统展示 PendingIntent 均不互相覆盖。
+- 前台提升失败、声音/震动部分失败时按缺失媒介选择备用渠道。
+- 提前提醒未关闭时，到点提醒重新开始本轮播放。
+- 服务保活通知、用户强提醒通知和四种备用渠道使用不同渠道 ID。
 
 ## APK 验证
 
-- 路径：`../outputs/app-release.apk`
+- 路径：`../outputs/ReminderApp-v1.2.apk`
 - 包名：`com.reminder.local`
-- 版本：`1.1`（`versionCode 2`）
+- 版本：`1.2`（`versionCode 3`）
 - minSdk / targetSdk：31 / 36
-- 大小：48,270,426 字节
-- SHA-256：`81cc3ebd672548441d827f6d3858ef1605ed95cc7eca5274679d844851def69d`
+- 大小：48,384,713 字节
+- SHA-256：`d0f791d33a47ab638ed01c77b724bb6e24195f610802f25cbc20303b3be5587a`
 - `apksigner verify`：通过 APK Signature Scheme v2
 - 签名：Android Debug，适合个人直装测试，不适合应用商店发布
 
@@ -58,7 +64,7 @@ ANDROID_HOME=/opt/homebrew/share/android-commandlinetools \
 
 ## 独立代码审查
 
-审查发现的多提醒 Service 状态覆盖、Activity 旧查询覆盖新提醒、加载期间关闭丢通知、铃声无降级、滚轮提交旧值共 5 项，均已修复并重新通过完整构建。
+本轮审查额外发现：服务启动成功后，`startForeground()` 或手动播放仍可能失败；提前/到点的系统展示 PendingIntent 仍可能覆盖。两项均已补充回归测试并修复，随后重新通过干净的完整构建。
 
 ## 未完成的真机验收
 
