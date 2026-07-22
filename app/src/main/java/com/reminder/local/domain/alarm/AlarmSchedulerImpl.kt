@@ -62,16 +62,35 @@ class AlarmSchedulerImpl @Inject constructor(
                 requestCode = advanceAlarmRequestCode(reminder.alarmId)
             )
         } else {
+            alarmManager.cancel(
+                buildOperationPendingIntent(
+                    reminder,
+                    AlarmReceiver.KIND_ADVANCE,
+                    advanceAlarmRequestCode(reminder.alarmId),
+                    reminder.effectiveTime
+                )
+            )
             Log.i(
                 TAG,
                 "提前提醒未注册 reminderId=${reminder.id} advanceAt=$advanceAt " +
                     "effectiveTime=${reminder.effectiveTime} type=${reminder.advanceReminderType}"
-            )
+                )
+        }
+        cancelSnooze(reminder)
+    }
+
+    override fun replaceExact(previous: Reminder, updated: Reminder) {
+        try {
+            scheduleExact(updated)
+        } catch (error: Exception) {
+            runCatching { scheduleExact(previous) }
+                .onFailure { Log.e(TAG, "替换失败后恢复旧闹钟失败 reminderId=${previous.id}", it) }
+            throw error
         }
     }
 
     private fun scheduleOne(reminder: Reminder, triggerAt: Long, kind: String, requestCode: Int) {
-        val operation = buildOperationPendingIntent(reminder, kind, requestCode)
+        val operation = buildOperationPendingIntent(reminder, kind, requestCode, reminder.effectiveTime)
         val showIntent = buildShowPendingIntent(reminder, kind)
         alarmManager.setAlarmClock(
             AlarmManager.AlarmClockInfo(triggerAt, showIntent),
@@ -85,14 +104,23 @@ class AlarmSchedulerImpl @Inject constructor(
     }
 
     override fun cancel(reminder: Reminder) {
-        alarmManager.cancel(buildOperationPendingIntent(reminder, AlarmReceiver.KIND_DUE, reminder.alarmId))
+        alarmManager.cancel(
+            buildOperationPendingIntent(
+                reminder,
+                AlarmReceiver.KIND_DUE,
+                reminder.alarmId,
+                reminder.effectiveTime
+            )
+        )
         alarmManager.cancel(
             buildOperationPendingIntent(
                 reminder,
                 AlarmReceiver.KIND_ADVANCE,
-                advanceAlarmRequestCode(reminder.alarmId)
+                advanceAlarmRequestCode(reminder.alarmId),
+                reminder.effectiveTime
             )
         )
+        cancelSnooze(reminder)
     }
 
     override fun scheduleSnooze(reminder: Reminder, delayMillis: Long) {
@@ -100,19 +128,41 @@ class AlarmSchedulerImpl @Inject constructor(
             throw IllegalStateException("精确闹钟权限未开启")
         }
         val triggerAt = System.currentTimeMillis() + delayMillis
-        val operation = buildOperationPendingIntent(reminder, AlarmReceiver.KIND_DUE, snoozeAlarmRequestCode(reminder.alarmId))
-        val showIntent = buildShowPendingIntent(reminder, AlarmReceiver.KIND_DUE)
+        val operation = buildOperationPendingIntent(
+            reminder,
+            AlarmReceiver.KIND_SNOOZE,
+            snoozeAlarmRequestCode(reminder.alarmId),
+            triggerAt
+        )
+        val showIntent = buildShowPendingIntent(reminder, AlarmReceiver.KIND_SNOOZE, triggerAt)
         alarmManager.setAlarmClock(
             AlarmManager.AlarmClockInfo(triggerAt, showIntent),
             operation
         )
     }
 
-    private fun buildOperationPendingIntent(reminder: Reminder, kind: String, requestCode: Int): PendingIntent {
+    private fun cancelSnooze(reminder: Reminder) {
+        alarmManager.cancel(
+            buildOperationPendingIntent(
+                reminder,
+                AlarmReceiver.KIND_SNOOZE,
+                snoozeAlarmRequestCode(reminder.alarmId),
+                reminder.effectiveTime
+            )
+        )
+    }
+
+    private fun buildOperationPendingIntent(
+        reminder: Reminder,
+        kind: String,
+        requestCode: Int,
+        occurrenceTime: Long
+    ): PendingIntent {
         val intent = Intent(context, AlarmReceiver::class.java).apply {
             data = Uri.parse(AlarmIntentIdentity.trigger(reminder.id, kind))
             putExtra(AlarmReceiver.EXTRA_REMINDER_ID, reminder.id)
             putExtra(AlarmReceiver.EXTRA_ALARM_KIND, kind)
+            putExtra(AlarmReceiver.EXTRA_OCCURRENCE_TIME, occurrenceTime)
         }
         return PendingIntent.getBroadcast(
             context,
@@ -122,7 +172,11 @@ class AlarmSchedulerImpl @Inject constructor(
         )
     }
 
-    private fun buildShowPendingIntent(reminder: Reminder, kind: String): PendingIntent {
+    private fun buildShowPendingIntent(
+        reminder: Reminder,
+        kind: String,
+        alarmTime: Long = reminder.effectiveTime
+    ): PendingIntent {
         val intent = Intent(context, AlarmActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             data = Uri.parse(AlarmIntentIdentity.show(reminder.id, kind))
@@ -130,13 +184,17 @@ class AlarmSchedulerImpl @Inject constructor(
             putExtra(AlarmActivity.EXTRA_ALARM_ID, reminder.alarmId)
             putExtra(AlarmActivity.EXTRA_TITLE, reminder.title)
             putExtra(AlarmActivity.EXTRA_NOTE, reminder.note)
-            putExtra(AlarmActivity.EXTRA_ALARM_TIME, reminder.effectiveTime)
+            putExtra(AlarmActivity.EXTRA_ALARM_TIME, alarmTime)
             // 2026-07 第二轮复查修复：这里以前无论 DUE / ADVANCE / 稍后提醒都写死传 DUE，
             // 只影响系统状态栏"下一个闹钟"图标被手动点开时的预览文案（不影响到点后的真实提醒），
             // 但既然有现成的 kind 参数，顺手传对更准确。
             putExtra(
                 AlarmActivity.EXTRA_ALARM_KIND,
-                if (kind == AlarmReceiver.KIND_ADVANCE) AlarmAlertKind.ADVANCE.name else AlarmAlertKind.DUE.name
+                when (kind) {
+                    AlarmReceiver.KIND_ADVANCE -> AlarmAlertKind.ADVANCE.name
+                    AlarmReceiver.KIND_SNOOZE -> AlarmAlertKind.SNOOZE.name
+                    else -> AlarmAlertKind.DUE.name
+                }
             )
         }
         val requestCode = showActivityRequestCode(reminder.alarmId, kind)
@@ -205,10 +263,10 @@ class AlarmSchedulerImpl @Inject constructor(
 
         fun showActivityRequestCode(alarmId: Int, kind: String): Int {
             val base = alarmId xor 0x08000000
-            return if (kind == AlarmReceiver.KIND_ADVANCE) {
-                base xor 0x40000000
-            } else {
-                base
+            return when (kind) {
+                AlarmReceiver.KIND_ADVANCE -> base xor 0x40000000
+                AlarmReceiver.KIND_SNOOZE -> base xor 0x20000000
+                else -> base
             }
         }
     }

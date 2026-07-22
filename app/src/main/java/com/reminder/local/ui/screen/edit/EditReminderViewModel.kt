@@ -224,8 +224,12 @@ class EditReminderViewModel @Inject constructor(
         val state = _uiState.value
         viewModelScope.launch {
             val reminder = reminderRepository.getById(state.id) ?: return@launch
-            deleteReminderUseCase(reminder, scope)
-            _uiState.value = _uiState.value.copy(pendingDeleteScope = false, deleted = true)
+            val deleted = deleteReminderUseCase(reminder, scope)
+            _uiState.value = _uiState.value.copy(
+                pendingDeleteScope = false,
+                deleted = deleted,
+                generalError = if (deleted) null else "删除失败，请重试"
+            )
         }
     }
 

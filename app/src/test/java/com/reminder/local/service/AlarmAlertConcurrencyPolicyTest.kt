@@ -15,9 +15,26 @@ class AlarmAlertConcurrencyPolicyTest {
 
     @Test
     fun staleCloseActionCannotStopNewerActiveAlarm() {
-        assertFalse(AlarmAlertConcurrencyPolicy.actionTargetsCurrent(202, 101))
-        assertTrue(AlarmAlertConcurrencyPolicy.actionTargetsCurrent(202, 202))
-        assertTrue(AlarmAlertConcurrencyPolicy.actionTargetsCurrent(null, 101))
+        val current = AlarmAlertInstanceKey(202, AlarmAlertKind.DUE, 2_000L)
+        assertFalse(
+            AlarmAlertConcurrencyPolicy.actionTargetsCurrent(
+                current,
+                AlarmAlertInstanceKey(101, AlarmAlertKind.DUE, 1_000L)
+            )
+        )
+        assertFalse(
+            AlarmAlertConcurrencyPolicy.actionTargetsCurrent(
+                current,
+                AlarmAlertInstanceKey(202, AlarmAlertKind.ADVANCE, 2_000L)
+            )
+        )
+        assertTrue(AlarmAlertConcurrencyPolicy.actionTargetsCurrent(current, current))
+        assertTrue(
+            AlarmAlertConcurrencyPolicy.actionTargetsCurrent(
+                null,
+                AlarmAlertInstanceKey(101, AlarmAlertKind.DUE, 1_000L)
+            )
+        )
     }
 
     @Test

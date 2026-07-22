@@ -68,6 +68,7 @@ fun ReminderListScreen(
                         viewModel.undoComplete(event.reminder)
                     }
                 }
+                is ListEvent.ShowError -> snackbarHostState.showSnackbar(event.message)
             }
         }
     }

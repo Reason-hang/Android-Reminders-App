@@ -49,7 +49,8 @@ class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val reminderId = intent.getLongExtra(EXTRA_REMINDER_ID, -1L)
         val alarmKind = intent.getStringExtra(EXTRA_ALARM_KIND) ?: KIND_DUE
-        Log.d(TAG, "onReceive reminderId=$reminderId kind=$alarmKind")
+        val occurrenceTime = intent.getLongExtra(EXTRA_OCCURRENCE_TIME, -1L)
+        Log.d(TAG, "onReceive reminderId=$reminderId kind=$alarmKind occurrence=$occurrenceTime")
         if (reminderId < 0) return
 
         val pendingResult = goAsync()
@@ -62,6 +63,18 @@ class AlarmReceiver : BroadcastReceiver() {
                         "kind=$alarmKind (为空说明数据库里已经查不到这条提醒，不会有任何提醒动作)"
                 )
                 if (reminder != null && reminder.status == ReminderStatus.PENDING) {
+                    if (
+                        alarmKind != KIND_SNOOZE &&
+                        occurrenceTime > 0L &&
+                        reminder.effectiveTime != occurrenceTime
+                    ) {
+                        Log.w(
+                            TAG,
+                            "忽略已失效的闹钟实例 reminderId=$reminderId kind=$alarmKind " +
+                                "occurrence=$occurrenceTime current=${reminder.effectiveTime}"
+                        )
+                        return@launch
+                    }
                     if (AlarmTriggerPolicy.shouldStartStrongAlert(alarmKind)) {
                         val started = runCatching {
                             ContextCompat.startForegroundService(
@@ -72,13 +85,13 @@ class AlarmReceiver : BroadcastReceiver() {
                                     alarmId = reminder.alarmId,
                                     title = reminder.title,
                                     note = reminder.note,
-                                    alarmTime = reminder.effectiveTime,
+                                    alarmTime = occurrenceTime.takeIf { it > 0L } ?: reminder.effectiveTime,
                                     sound = reminder.notifySound,
                                     vibrate = reminder.notifyVibrate,
-                                    kind = if (alarmKind == KIND_ADVANCE) {
-                                        AlarmAlertKind.ADVANCE
-                                    } else {
-                                        AlarmAlertKind.DUE
+                                    kind = when (alarmKind) {
+                                        KIND_ADVANCE -> AlarmAlertKind.ADVANCE
+                                        KIND_SNOOZE -> AlarmAlertKind.SNOOZE
+                                        else -> AlarmAlertKind.DUE
                                     }
                                 )
                             )
@@ -91,7 +104,7 @@ class AlarmReceiver : BroadcastReceiver() {
                             // 保证用户至少能在通知栏/锁屏看到内容、点开能进入提醒详情，
                             // 而不是彻底没有任何反应。
                             Log.e(TAG, "startForegroundService 失败，降级为普通通知 reminderId=${reminder.id}", error)
-                            postFallbackNotification(context, reminder, alarmKind)
+                            postFallbackNotification(context, reminder, alarmKind, occurrenceTime)
                         }
                     }
 
@@ -108,11 +121,36 @@ class AlarmReceiver : BroadcastReceiver() {
                             next != null && next > reminder.repeatEndDate
 
                         if (next == null || exceededEnd) {
-                            repository.update(reminder.copy(status = ReminderStatus.DONE))
+                            val finished = reminder.copy(
+                                status = ReminderStatus.DONE,
+                                completedAt = System.currentTimeMillis(),
+                                updatedAt = System.currentTimeMillis()
+                            )
+                            if (!repository.updateIfOccurrenceCurrent(finished, reminder.effectiveTime)) {
+                                Log.w(TAG, "本次重复提醒已被其他操作处理 reminderId=${reminder.id}")
+                            }
                         } else {
-                            val updated = reminder.copy(nextTriggerTime = next)
-                            repository.update(updated)
-                            alarmScheduler.scheduleExact(updated)
+                            val updated = reminder.copy(
+                                nextTriggerTime = next,
+                                updatedAt = System.currentTimeMillis()
+                            )
+                            if (repository.updateIfOccurrenceCurrent(updated, reminder.effectiveTime)) {
+                                runCatching { alarmScheduler.scheduleExact(updated) }
+                                    .onFailure { scheduleError ->
+                                        runCatching { alarmScheduler.cancel(updated) }
+                                        val rolledBack = runCatching {
+                                            repository.updateIfOccurrenceCurrent(reminder, next)
+                                        }.getOrDefault(false)
+                                        Log.e(
+                                            TAG,
+                                            "重复提醒推进后调度失败 reminderId=${reminder.id} " +
+                                                "rolledBack=$rolledBack",
+                                            scheduleError
+                                        )
+                                    }
+                            } else {
+                                Log.w(TAG, "跳过重复推进，occurrence 已变化 reminderId=${reminder.id}")
+                            }
                         }
                     }
                 }
@@ -131,9 +169,18 @@ class AlarmReceiver : BroadcastReceiver() {
      * 根因（为什么前台服务启动失败）仍需要看 logcat 里上一行的异常堆栈来定位。
      */
     @SuppressLint("MissingPermission")
-    private fun postFallbackNotification(context: Context, reminder: Reminder, alarmKind: String) {
+    private fun postFallbackNotification(
+        context: Context,
+        reminder: Reminder,
+        alarmKind: String,
+        occurrenceTime: Long
+    ) {
         if (!AlarmTriggerPolicy.shouldUseNoisyFallback(alarmKind)) return
-        val kind = if (alarmKind == KIND_ADVANCE) AlarmAlertKind.ADVANCE else AlarmAlertKind.DUE
+        val kind = when (alarmKind) {
+            KIND_ADVANCE -> AlarmAlertKind.ADVANCE
+            KIND_SNOOZE -> AlarmAlertKind.SNOOZE
+            else -> AlarmAlertKind.DUE
+        }
         val activityIntent = Intent(context, AlarmActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             data = Uri.parse(AlarmIntentIdentity.alert(reminder.id, kind))
@@ -141,7 +188,10 @@ class AlarmReceiver : BroadcastReceiver() {
             putExtra(AlarmActivity.EXTRA_ALARM_ID, reminder.alarmId)
             putExtra(AlarmActivity.EXTRA_TITLE, reminder.title)
             putExtra(AlarmActivity.EXTRA_NOTE, reminder.note)
-            putExtra(AlarmActivity.EXTRA_ALARM_TIME, reminder.effectiveTime)
+            putExtra(
+                AlarmActivity.EXTRA_ALARM_TIME,
+                occurrenceTime.takeIf { it > 0L } ?: reminder.effectiveTime
+            )
             putExtra(AlarmActivity.EXTRA_ALARM_KIND, kind.name)
         }
         val requestCode = if (alarmKind == KIND_ADVANCE) {
@@ -150,9 +200,60 @@ class AlarmReceiver : BroadcastReceiver() {
             reminder.alarmId
         }
         val contentPendingIntent = activityPendingIntent(context, requestCode, activityIntent)
-        val titlePrefix = if (alarmKind == KIND_ADVANCE) "提前提醒：" else ""
+        val titlePrefix = when (alarmKind) {
+            KIND_ADVANCE -> "提前提醒："
+            KIND_SNOOZE -> "稍后提醒："
+            else -> ""
+        }
         val title = "$titlePrefix${reminder.title}"
         val previewText = reminder.note?.ifBlank { null } ?: "提醒时间到了"
+        val instanceTime = occurrenceTime.takeIf { it > 0L } ?: reminder.effectiveTime
+        val closeIntent = AlarmAlertService.stopIntent(
+            context = context,
+            reminderId = reminder.id,
+            alarmId = reminder.alarmId,
+            title = reminder.title,
+            note = reminder.note,
+            kind = kind,
+            occurrenceTime = instanceTime,
+            retainNotification = true
+        ).apply {
+            data = Uri.parse(
+                AlarmIntentIdentity.action(reminder.id, reminder.alarmId, kind, instanceTime, "close")
+            )
+        }
+        val closePendingIntent = PendingIntent.getService(
+            context,
+            reminder.alarmId xor 0x10000000,
+            closeIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        fun actionPendingIntent(action: String, requestCodeOffset: Int): PendingIntent {
+            val actionIntent = Intent(context, NotificationActionReceiver::class.java).apply {
+                this.action = action
+                data = Uri.parse(
+                    AlarmIntentIdentity.action(
+                        reminder.id,
+                        reminder.alarmId,
+                        kind,
+                        instanceTime,
+                        action
+                    )
+                )
+                putExtra(NotificationActionReceiver.EXTRA_REMINDER_ID, reminder.id)
+                putExtra(NotificationActionReceiver.EXTRA_ALARM_ID, reminder.alarmId)
+                putExtra(NotificationActionReceiver.EXTRA_ALARM_KIND, kind.name)
+                putExtra(NotificationActionReceiver.EXTRA_OCCURRENCE_TIME, instanceTime)
+            }
+            return PendingIntent.getBroadcast(
+                context,
+                reminder.alarmId + requestCodeOffset,
+                actionIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
+        val snoozePendingIntent = actionPendingIntent(NotificationActionReceiver.ACTION_SNOOZE, 1)
+        val donePendingIntent = actionPendingIntent(NotificationActionReceiver.ACTION_MARK_DONE, 2)
         val publicPreview = NotificationCompat.Builder(
             context,
             AlarmNotificationPolicy.fallbackChannelId(
@@ -188,9 +289,13 @@ class AlarmReceiver : BroadcastReceiver() {
             .setWhen(System.currentTimeMillis())
             .setAutoCancel(false)
             .setOngoing(false)
+            .setDeleteIntent(closePendingIntent)
             .setPublicVersion(publicPreview)
             .setContentIntent(contentPendingIntent)
             .setFullScreenIntent(contentPendingIntent, true)
+            .addAction(0, "关闭", closePendingIntent)
+            .addAction(0, context.getString(R.string.action_snooze), snoozePendingIntent)
+            .addAction(0, context.getString(R.string.action_mark_done), donePendingIntent)
             .build()
         runCatching {
             NotificationManagerCompat.from(context).notify(reminder.alarmId, notification)
@@ -265,7 +370,9 @@ class AlarmReceiver : BroadcastReceiver() {
 
         const val EXTRA_REMINDER_ID = "extra_reminder_id"
         const val EXTRA_ALARM_KIND = "extra_alarm_kind"
+        const val EXTRA_OCCURRENCE_TIME = "extra_occurrence_time"
         const val KIND_DUE = "due"
         const val KIND_ADVANCE = "advance"
+        const val KIND_SNOOZE = "snooze"
     }
 }

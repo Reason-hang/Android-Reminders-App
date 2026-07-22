@@ -8,7 +8,9 @@
            红米 K80 Pro（Android 16）上完全免去"去设置里手动开精确闹钟"这一步。
          - SCHEDULE_EXACT_ALARM（API 31+）：作为兜底，万一以后把 minSdk 改低到 Android 12/12L
            设备上运行（那些系统版本还不认识 USE_EXACT_ALARM），代码里仍会检测并引导用户手动授权。 -->
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <!-- 发通知：Android 13+ 运行时权限，Manifest 里也要声明 -->
@@ -33,6 +35,8 @@
     <application
         android:name=".App"
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/Theme.ReminderApp"
@@ -60,6 +64,12 @@
             android:theme="@style/Theme.ReminderApp"
             android:turnScreenOn="true" />
 
+        <activity
+            android:name=".ReminderEntryActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.ReminderApp" />
+
         <!-- 闹钟触发接收器：AlarmManager 到点后回调这里发通知 -->
         <receiver
             android:name=".receiver.AlarmReceiver"
@@ -68,10 +78,11 @@
         <!-- 开机广播接收器：重新注册所有未来的闹钟 -->
         <receiver
             android:name=".receiver.BootReceiver"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
                 <!-- MIUI 部分机型使用 QUICKBOOT_POWERON 代替标准广播 -->
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>

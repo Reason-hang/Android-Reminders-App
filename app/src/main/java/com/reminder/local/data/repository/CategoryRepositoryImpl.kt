@@ -22,8 +22,7 @@ class CategoryRepositoryImpl @Inject constructor(
     override suspend fun update(category: Category) = dao.update(category.toEntity())
 
     override suspend fun delete(category: Category) {
-        dao.reassignRemindersToUncategorized(category.id)
-        dao.delete(category.toEntity())
+        dao.deleteAndReassign(category.toEntity())
     }
 
     override suspend fun count(): Int = dao.count()

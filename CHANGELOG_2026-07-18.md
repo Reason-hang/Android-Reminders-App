@@ -1,4 +1,32 @@
-# 变更记录 - 2026-07-18
+# 变更记录 - 2026-07-18（v1.3）
+
+## v1.3 专业审计追加（2026-07-18 历史记录）
+
+### 2026-07-22 验证与交付更新
+
+- 修复 `AlarmActivity.onNewIntent()` 所需 `android.content.Intent` 导入缺失的编译回归，并以 `AlarmActivitySourceContractTest` 固化该契约。
+- 独立代码复核发现并修复：旧的一次性提醒通知在用户改期后，不能再完成或取消新提醒；新增回归测试。
+- 当前测试为 20 个测试类、63 个 JVM 用例；实际结果为 63/63 通过，失败/错误/跳过均为 0。
+- 已实际通过 `lintDebug` 和 `assembleRelease`；Lint 留有 55 个 warnings、3 个 hints，未阻断构建。
+- APK 已复核为 `com.reminder.local`、`1.3 (4)`、48,418,233 bytes，SHA-256 为 `960a6736368d14c415b0732dc2566e522910b67316c97015882e4123deef39c8`。
+- APK v2 签名有效，但签名证书为 Android Debug，交付定位为个人直装测试；生产发布须由用户保管正式 keystore。
+- ADB daemon 已能启动，但本次设备列表为空，红米真机验收保持未通过状态。
+
+- 版本升级为 `1.3 (4)`；最终 APK 必须命名为 `ReminderApp-v1.3.apk`。
+- Snooze 改为独立 `KIND_SNOOZE`，不再推进重复周期。
+- ADVANCE、DUE、SNOOZE 统一携带 occurrence；Receiver 只处理当前 occurrence，避免重复广播和旧闹钟推进。
+- 重复提醒到点后再点“完成本次”不会二次推进。
+- 旧通知操作使用 `alarmId + kind + occurrenceTime` 定位，不能无条件停止新提醒。
+- 新增/编辑/完成/删除/重建闹钟补偿路径，调度或数据库失败不再静默留下僵尸提醒。
+- 调度副作用分段隔离，一个步骤失败不再阻断声音、震动、通知和 Activity 的其他步骤。
+- 完整移除 priority；Room 升级 v4，保留数据迁移并增加 alarmId 唯一索引。
+- 新增应用更新和精确闹钟权限变化后的重建入口，开机恢复按单条隔离失败。
+- 删除分类与提醒改为未分类放进同一 Room 事务。
+- 外部 Launcher 不再接受 reminderId；通知详情使用不导出的内部 Activity。
+- 关闭云备份和设备迁移；扩展敏感文件 `.gitignore`。
+- 设置页支持垂直滚动，通知入口支持 `onNewIntent` 打开最新提醒。
+- 以下条目均为当时的历史记录：测试扩展到 19 个类、61 个用例；最终全量执行受 Codex 平台提权用量限制阻塞，不能宣称通过。
+- 新增 `AUDIT_REPORT_2026-07-18.md`、`BUILD_APK_REPORT_2026-07-18.md`、`PROJECT_MEMORY_2026-07-18.md`。
 
 ## 用户反馈
 

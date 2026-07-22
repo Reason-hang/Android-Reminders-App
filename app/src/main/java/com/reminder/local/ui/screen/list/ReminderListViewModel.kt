@@ -40,6 +40,7 @@ data class ReminderListUiState(
 
 sealed interface ListEvent {
     data class ShowUndoComplete(val reminder: Reminder) : ListEvent
+    data class ShowError(val message: String) : ListEvent
 }
 
 @HiltViewModel
@@ -93,16 +94,23 @@ class ReminderListViewModel @Inject constructor(
     /** 点击勾选框 或 右滑：非重复直接完成/取消完成；重复提醒需要先问清楚"仅本次"还是"全部"。 */
     fun onToggleComplete(reminder: Reminder) {
         if (reminder.status == ReminderStatus.DONE) {
-            viewModelScope.launch { completeReminderUseCase.markPending(reminder) }
+            viewModelScope.launch {
+                if (!completeReminderUseCase.markPending(reminder)) {
+                    _events.emit(ListEvent.ShowError("撤销完成失败，请重试"))
+                }
+            }
             return
         }
         if (reminder.isRepeating) {
             dialogState.value = dialogState.value.copy(second = reminder)
         } else {
             viewModelScope.launch {
-                completeReminderUseCase.markDone(reminder, RepeatActionScope.ALL)
-                notificationHelper.cancelNotification(reminder)
-                _events.emit(ListEvent.ShowUndoComplete(reminder))
+                if (completeReminderUseCase.markDone(reminder, RepeatActionScope.ALL)) {
+                    notificationHelper.cancelNotification(reminder)
+                    _events.emit(ListEvent.ShowUndoComplete(reminder))
+                } else {
+                    _events.emit(ListEvent.ShowError("标为完成失败，请重试"))
+                }
             }
         }
     }
@@ -110,8 +118,11 @@ class ReminderListViewModel @Inject constructor(
     fun onConfirmCompleteScope(scope: RepeatActionScope) {
         val reminder = dialogState.value.second ?: return
         viewModelScope.launch {
-            completeReminderUseCase.markDone(reminder, scope)
-            notificationHelper.cancelNotification(reminder)
+            if (completeReminderUseCase.markDone(reminder, scope)) {
+                notificationHelper.cancelNotification(reminder)
+            } else {
+                _events.emit(ListEvent.ShowError("完成重复提醒失败，请重试"))
+            }
         }
         dialogState.value = dialogState.value.copy(second = null)
     }
@@ -131,13 +142,20 @@ class ReminderListViewModel @Inject constructor(
     fun onConfirmDelete(scope: RepeatActionScope) {
         val reminder = dialogState.value.first ?: return
         viewModelScope.launch {
-            deleteReminderUseCase(reminder, scope)
-            notificationHelper.cancelNotification(reminder)
+            if (deleteReminderUseCase(reminder, scope)) {
+                notificationHelper.cancelNotification(reminder)
+            } else {
+                _events.emit(ListEvent.ShowError("删除失败，请重试"))
+            }
         }
         dialogState.value = dialogState.value.copy(first = null)
     }
 
     fun undoComplete(reminder: Reminder) {
-        viewModelScope.launch { completeReminderUseCase.markPending(reminder) }
+        viewModelScope.launch {
+            if (!completeReminderUseCase.markPending(reminder)) {
+                _events.emit(ListEvent.ShowError("撤销完成失败，请重试"))
+            }
+        }
     }
 }

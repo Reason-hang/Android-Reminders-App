@@ -23,50 +23,88 @@ class RescheduleAllAlarmsUseCase @Inject constructor(
         repository.markNonRepeatingExpired(now)
 
         val pendings = repository.getAllPending()
-        Log.d(TAG, "重建闹钟开始，待处理 ${pendings.size} 条 PENDING 提醒")
+        logDebug("重建闹钟开始，待处理 ${pendings.size} 条 PENDING 提醒")
+        if (!alarmScheduler.canScheduleExactAlarms()) {
+            logWarn("精确闹钟权限未开启，本次不重建未来系统闹钟")
+            return
+        }
         for (reminder in pendings) {
-            if (!alarmScheduler.canScheduleExactAlarms()) {
-                Log.w(TAG, "精确闹钟权限未开启，跳过 reminderId=${reminder.id}")
-                continue
-            }
+            runCatching { rescheduleOne(reminder, now) }
+                .onFailure { logError("单条提醒重建失败，继续处理后续 reminderId=${reminder.id}", it) }
+        }
+        logDebug("重建闹钟结束")
+    }
 
-            if (reminder.repeatType == RepeatType.NONE) {
-                val effective = reminder.nextTriggerTime ?: reminder.triggerTime
-                if (effective > now) {
-                    runCatching { alarmScheduler.scheduleExact(reminder) }
-                        .onFailure { Log.e(TAG, "非重复提醒重建失败 reminderId=${reminder.id}", it) }
-                }
-                // effective <= now 的情况已经被上面的 markNonRepeatingExpired 处理掉了。
-                continue
-            }
+    private suspend fun rescheduleOne(
+        reminder: com.reminder.local.domain.model.Reminder,
+        now: Long
+    ) {
+        if (reminder.repeatType == RepeatType.NONE) {
+            if (reminder.effectiveTime > now) alarmScheduler.scheduleExact(reminder)
+            return
+        }
 
-            // 重复提醒：追赶到未来的下一个触发点。
-            var next = reminder.nextTriggerTime ?: reminder.triggerTime
-            var shouldStop = false
-            while (next <= now) {
-                val candidate = RepeatCalculator.computeNext(reminder.triggerTime, next, reminder.repeatType)
-                val exceededEnd = reminder.repeatEndDate != null &&
-                    candidate != null && candidate > reminder.repeatEndDate
-                if (candidate == null || exceededEnd) {
-                    shouldStop = true
-                    break
-                }
+        var next = reminder.effectiveTime
+        var shouldStop = reminder.repeatEndDate?.let { next > it } == true
+        while (!shouldStop && next <= now) {
+            val candidate = RepeatCalculator.computeNext(reminder.triggerTime, next, reminder.repeatType)
+            if (candidate == null || reminder.repeatEndDate?.let { candidate > it } == true) {
+                shouldStop = true
+            } else {
                 next = candidate
             }
-
-            if (shouldStop) {
-                repository.update(reminder.copy(status = ReminderStatus.DONE, updatedAt = now))
-            } else {
-                val updated = reminder.copy(nextTriggerTime = next, updatedAt = now)
-                runCatching { alarmScheduler.scheduleExact(updated) }
-                    .onSuccess { repository.update(updated) }
-                    .onFailure { Log.e(TAG, "重复提醒重建失败 reminderId=${reminder.id}", it) }
-            }
         }
-        Log.d(TAG, "重建闹钟结束")
+
+        if (shouldStop) {
+            val finished =
+                reminder.copy(
+                    status = ReminderStatus.DONE,
+                    completedAt = now,
+                    updatedAt = now
+                )
+            if (repository.updateIfOccurrenceCurrent(finished, reminder.effectiveTime)) {
+                runCatching { alarmScheduler.cancel(reminder) }
+            }
+            return
+        }
+
+        if (next == reminder.effectiveTime) {
+            alarmScheduler.scheduleExact(reminder)
+            return
+        }
+
+        val updated = reminder.copy(nextTriggerTime = next, updatedAt = now)
+        if (!repository.updateIfOccurrenceCurrent(updated, reminder.effectiveTime)) return
+        try {
+            alarmScheduler.scheduleExact(updated)
+        } catch (scheduleError: Exception) {
+            runCatching { alarmScheduler.cancel(updated) }
+            val rolledBack = runCatching {
+                repository.updateIfOccurrenceCurrent(reminder, next)
+            }.getOrDefault(false)
+            if (!rolledBack) {
+                logError(
+                    "重建调度失败后数据库回滚未生效 reminderId=${reminder.id}",
+                    IllegalStateException("occurrence 已被其他操作修改")
+                )
+            }
+            throw scheduleError
+        }
     }
 
     private companion object {
         const val TAG = "RescheduleAllAlarmsUseCase"
+    }
+
+    private fun logDebug(message: String) {
+        runCatching { Log.d(TAG, message) }
+    }
+
+    private fun logWarn(message: String) {
+        runCatching { Log.w(TAG, message) }
+    }
+
+    private fun logError(message: String, error: Throwable) {
+        runCatching { Log.e(TAG, message, error) }
     }
 }

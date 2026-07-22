@@ -16,8 +16,8 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.reminder.local.MainActivity
 import com.reminder.local.R
+import com.reminder.local.ReminderEntryActivity
 import com.reminder.local.domain.model.Reminder
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -140,7 +140,6 @@ class NotificationHelper @Inject constructor(
 
     fun cancelNotification(reminder: Reminder) {
         NotificationManagerCompat.from(context).cancel(reminder.alarmId)
-        NotificationManagerCompat.from(context).cancel(reminder.alarmId + 2)
     }
 
     @SuppressLint("MissingPermission")
@@ -150,10 +149,10 @@ class NotificationHelper @Inject constructor(
         title: String,
         previewText: String
     ) {
-        val contentIntent = Intent(context, MainActivity::class.java).apply {
+        val contentIntent = Intent(context, ReminderEntryActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             data = Uri.parse("reminder://$reminderId/view")
-            putExtra(MainActivity.EXTRA_OPEN_REMINDER_ID, reminderId)
+            putExtra(ReminderEntryActivity.EXTRA_OPEN_REMINDER_ID, reminderId)
         }
         val contentPendingIntent = PendingIntent.getActivity(
             context,

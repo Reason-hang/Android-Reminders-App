@@ -2,14 +2,17 @@ package com.reminder.local.data.db.entity
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
-import com.reminder.local.domain.model.Priority
 import com.reminder.local.domain.model.AdvanceReminderType
 import com.reminder.local.domain.model.AdvanceReminderUnit
 import com.reminder.local.domain.model.ReminderStatus
 import com.reminder.local.domain.model.RepeatType
 
-@Entity(tableName = "reminders")
+@Entity(
+    tableName = "reminders",
+    indices = [Index(value = ["alarmId"], unique = true)]
+)
 data class ReminderEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0L,
@@ -18,7 +21,6 @@ data class ReminderEntity(
     val triggerTime: Long,
     val nextTriggerTime: Long? = null,
     val categoryId: Long? = null,
-    val priority: Priority = Priority.MEDIUM,
     val status: ReminderStatus = ReminderStatus.PENDING,
     val repeatType: RepeatType = RepeatType.NONE,
     val repeatEndDate: Long? = null,

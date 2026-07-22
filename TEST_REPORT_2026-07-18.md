@@ -1,79 +1,105 @@
-# 最终测试报告 - 2026-07-18
+# 自动化测试报告 - 2026-07-18
 
-## 验证范围
+## 2026-07-22 最终执行更新
 
-- 提前/到点两次强提醒调度、响铃/震动降级、全屏启动、关闭后通知保留。
-- 锁屏用户通知与前台服务通知分离、公开内容预览和通知渠道版本化。
-- 多提醒重叠和 Activity 异步加载竞态。
-- 双列小时/分钟滚轮与中心项吸附。
-- 新增提前提醒选项和“每隔 5 小时”重复。
-- Release APK 构建、版本、签名、最小权限和敏感信息静态检查。
+已获授权实际执行 `./gradlew clean testDebugUnitTest lintDebug assembleRelease --console=plain --warning-mode=none`，随后从 Gradle XML 汇总：**63 passed / 0 failed / 0 error / 0 skipped**，对应 20 个测试类。独立代码复核发现“旧的一次性提醒通知可完成已改期提醒”后，先新增失败测试、再修复并重跑完整验证；该用例已经包含在 63 项结果中。此前文中“最终回归阻塞”“61 个待执行”均为 2026-07-18 的历史过程，不再代表当前源码状态。
 
-## 自动化结果
+`lintDebug` 已执行完成。报告包含 55 个 warnings 和 3 个 hints（包括可升级依赖、KAPT、Compose API 弃用和未使用资源），没有 lint error，未阻断构建；它们仍是后续维护项。
 
-执行命令：
+## 2026-07-18 历史结论（已失效）
+
+以下是当时的过程记录，不代表当前结论：v1.3 当时静态统计为 19 个测试类、61 个 `@Test`。本轮采用 TDD 先新增失败用例并真实执行，成功暴露 8 个历史缺陷；修复后中间回归剩余 2 个 `android.util.Log` 在本地 JVM 未 mock 的失败，代码已改为安全日志封装。其后新增的完整 61 个用例当时尚未获准重新执行。
+
+## 实际执行记录
+
+### 1. 修改前基线
 
 ```bash
 JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
 ANDROID_HOME=/opt/homebrew/share/android-commandlinetools \
-./gradlew testDebugUnitTest assembleRelease
+./gradlew clean testDebugUnitTest lintDebug assembleRelease --console=plain
 ```
 
-结果：`BUILD SUCCESSFUL`。
+结果：`BUILD SUCCESSFUL in 3m45s`；13 个测试类、41 个用例通过。证据只对应修改前 v1.2 基线。
 
-| 指标 | 结果 |
+### 2. TDD 红灯
+
+新增失败测试后执行 `testDebugUnitTest`：48 个用例中 8 个失败，覆盖：
+
+- 领域模型仍含 priority；
+- 完成本次调度失败后旧状态/旧闹钟未保持；
+- 完成全部 DB 失败却取消旧闹钟；
+- 删除本次调度失败后旧状态/旧闹钟未保持；
+- 删除全部 DB 失败却取消旧闹钟；
+- 编辑 DB 失败后旧闹钟未恢复；
+- 非法重复截止日期仍取消旧闹钟；
+- Snooze 没有被识别为独立强提醒。
+
+这些失败是本轮修复的实际复现证据，不是静态推测。
+
+### 3. 中间回归
+
+第一次修复后再次执行：48 个用例剩余 2 个失败，均因失败分支直接调用 `android.util.Log.e`，Android 本地 JVM stub 抛出 “Method e in android.util.Log not mocked”。随后已把领域 UseCase 日志改为 `runCatching` 安全封装。
+
+### 4. 最终回归阻塞
+
+计划执行：
+
+```bash
+./gradlew clean testDebugUnitTest lintDebug assembleRelease --console=plain
+```
+
+平台拒绝信息：
+
+```text
+Automatic approval review failed: You've hit your usage limit.
+try again at Jul 25th, 2026 4:04 PM.
+```
+
+按平台要求没有通过替代目录、替代 daemon 或其他方式规避限制。
+
+## 当前测试清单
+
+| 测试类 | 主要覆盖 |
 |---|---|
-| JVM 测试类 | 13 |
-| JVM 测试用例 | 41 |
-| 失败 | 0 |
-| 错误 | 0 |
-| 跳过 | 0 |
-| Release 构建 | 通过 |
-| Lint Vital | 通过 |
-| 完整 Debug Lint | 通过，错误 0 |
+| `AddReminderUseCaseTest` | 新增、过期时间、alarmId 冲突重试 |
+| `EditReminderUseCaseTest` | 校验失败不取消旧闹钟、DB 失败恢复旧闹钟 |
+| `CompleteReminderUseCaseTest` | 仅本次/全部失败补偿、Receiver 已推进后不二次推进 |
+| `DeleteReminderUseCaseTest` | 仅本次/全部失败补偿 |
+| `RescheduleAllAlarmsUseCaseTest` | 单条失败隔离、重复追赶、权限缺失、结束日期 |
+| `RepeatCalculatorTest` | 全部重复类型、31→2 月裁剪→3 月恢复、闰年、北京时间工作日 |
+| `AdvanceReminderCalculatorTest` | 固定和自定义提前时间 1-200、月份单位 |
+| `ReminderScheduleValidatorTest` | 提前量不小于重复周期时拒绝保存 |
+| `ReminderModelContractTest` | priority 不再属于领域模型 |
+| `AlarmTriggerPolicyTest` | ADVANCE/DUE/SNOOZE 强提醒与周期推进策略 |
+| `AlarmSchedulerRequestCodeTest` | 三种 kind 的操作/展示 requestCode 隔离 |
+| `AlarmAlertConcurrencyPolicyTest` | 多提醒切换、旧实例操作隔离 |
+| `AlarmIntentIdentityTest` | reminder/kind/occurrence/action URI 唯一性 |
+| `AlarmAlertContentFormatterTest` | 锁屏标题、备注、提前和稍后文案 |
+| `AlarmDeliveryPolicyTest` | FGS/声音/震动部分失败的精确降级 |
+| `AlarmNotificationPolicyTest` | 服务、强提醒和四类备用渠道隔离 |
+| `AlarmAlertInteractionPolicyTest` | 关闭保留、完成/稍后移除通知 |
+| `AlarmAlertLaunchPolicyTest` | WakeLock 时限和全屏启动策略 |
+| `WheelPickerSelectionTest` | 双列滚轮中心项和边界选择 |
+| `AlarmActivitySourceContractTest` | `onNewIntent` 所需 `Intent` 导入的编译契约，防止同类回归 |
+| `CompleteReminderUseCaseTest`（追加） | 旧的一次性提醒通知不能完成或取消已改期的提醒 |
 
-新增回归覆盖：
+## 静态验证
 
-- Android 16 后台全屏启动策略。
-- 关闭强提醒后保留通知记录。
-- 多提醒重叠时旧操作不能误停新提醒。
-- 时间滚轮选择最接近视口中心的项目。
-- 10 分钟前、3 小时前、2 周前。
-- 每隔 5 小时。
-- 提前与到点的 AlarmManager 操作和系统展示 PendingIntent 均不互相覆盖。
-- 前台提升失败、声音/震动部分失败时按缺失媒介选择备用渠道。
-- 提前提醒未关闭时，到点提醒重新开始本轮播放。
-- 服务保活通知、用户强提醒通知和四种备用渠道使用不同渠道 ID。
+本轮已实际执行并通过：
 
-## APK 验证
+- `git diff --check`；
+- `xmllint --noout` 检查 Manifest 和数据提取 XML；
+- `jq empty` 检查 Room v4 Schema JSON；
+- 敏感信息正则扫描；
+- 禁止项扫描：INTERNET、FLAG_MUTABLE、destructive migration、主线程 Room；
+- 源码全局扫描确认 priority 不再出现在 Kotlin 业务代码。
 
-- 路径：`../outputs/ReminderApp-v1.2.apk`
-- 包名：`com.reminder.local`
-- 版本：`1.2`（`versionCode 3`）
-- minSdk / targetSdk：31 / 36
-- 大小：48,384,713 字节
-- SHA-256：`d0f791d33a47ab638ed01c77b724bb6e24195f610802f25cbc20303b3be5587a`
-- `apksigner verify`：通过 APK Signature Scheme v2
-- 签名：Android Debug，适合个人直装测试，不适合应用商店发布
+静态检查是 C 级证据，不能替代 JVM、Lint、Release 或真机结果。本次 JVM、Lint 和 Release 已有 B 级实际证据；真机仍缺 A 级证据。
 
-## 安全与隐私
+## 尚缺测试
 
-- Manifest 不包含 `android.permission.INTERNET`。
-- 未发现硬编码 API Key、密码、私钥或客户端密钥。
-- 未加入账号、网络传输或云同步能力。
-
-## 独立代码审查
-
-本轮审查额外发现：服务启动成功后，`startForeground()` 或手动播放仍可能失败；提前/到点的系统展示 PendingIntent 仍可能覆盖。两项均已补充回归测试并修复，随后重新通过干净的完整构建。
-
-## 未完成的真机验收
-
-执行 `adb devices -l` 时没有已授权设备，因此不能宣称以下项目已通过真机测试：
-
-- 红米 K80 Pro 锁屏时亮屏、响铃、震动、全屏页和内容预览。
-- 手机已解锁使用中时主动拉起全屏页。
-- 点击“关闭”后通知中心记录继续保留。
-- 两条提醒同一分钟触发时的前后提醒切换。
-- HyperOS 自启动、后台弹出界面和重启恢复。
-
-真机验收步骤见 `REAL_DEVICE_VERIFICATION_2026-07-10.md`。
+- Room v3→v4 `MigrationTestHelper` 仪器测试；
+- Notification/Manifest/Receiver 的 Android 仪器测试；
+- 红米 K80 Pro 上的锁屏、后台、清任务、重启、并发和通知操作；
+- APK 覆盖安装后旧数据完整性。

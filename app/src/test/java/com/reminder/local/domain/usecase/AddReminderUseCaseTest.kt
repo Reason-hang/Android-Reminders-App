@@ -85,6 +85,15 @@ private class FakeReminderRepository(
     override suspend fun update(reminder: Reminder) {
         saved = reminder
     }
+    override suspend fun updateIfOccurrenceCurrent(
+        reminder: Reminder,
+        expectedOccurrenceTime: Long
+    ): Boolean {
+        val current = saved ?: return false
+        if (current.effectiveTime != expectedOccurrenceTime) return false
+        saved = reminder
+        return true
+    }
     override suspend fun delete(reminder: Reminder) {
         deletedAfterInsert = saved?.id == reminder.id
         saved = null

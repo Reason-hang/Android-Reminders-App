@@ -6,6 +6,14 @@ object AlarmAlertConcurrencyPolicy {
 
     fun shouldRestartPlayback(currentAlarmId: Int?): Boolean = currentAlarmId != null
 
-    fun actionTargetsCurrent(currentAlarmId: Int?, actionAlarmId: Int): Boolean =
-        currentAlarmId == null || currentAlarmId == actionAlarmId
+    fun actionTargetsCurrent(
+        current: AlarmAlertInstanceKey?,
+        action: AlarmAlertInstanceKey
+    ): Boolean = current == null || current == action
 }
+
+data class AlarmAlertInstanceKey(
+    val alarmId: Int,
+    val kind: AlarmAlertKind,
+    val occurrenceTime: Long
+)

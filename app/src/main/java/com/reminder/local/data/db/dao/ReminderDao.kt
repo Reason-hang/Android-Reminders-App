@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import com.reminder.local.data.db.entity.ReminderEntity
 import kotlinx.coroutines.flow.Flow
@@ -22,6 +23,20 @@ interface ReminderDao {
 
     @Query("SELECT * FROM reminders WHERE id = :id")
     suspend fun getById(id: Long): ReminderEntity?
+
+    /** 仅当数据库仍指向本次 occurrence 时更新，防止重复广播/并发操作二次推进。 */
+    @Transaction
+    suspend fun updateIfOccurrenceCurrent(entity: ReminderEntity, expectedOccurrenceTime: Long): Boolean {
+        val current = getById(entity.id) ?: return false
+        val currentOccurrence = current.nextTriggerTime ?: current.triggerTime
+        if (current.status != com.reminder.local.domain.model.ReminderStatus.PENDING ||
+            currentOccurrence != expectedOccurrenceTime
+        ) {
+            return false
+        }
+        update(entity)
+        return true
+    }
 
     @Query("SELECT EXISTS(SELECT 1 FROM reminders WHERE alarmId = :alarmId)")
     suspend fun isAlarmIdInUse(alarmId: Int): Boolean

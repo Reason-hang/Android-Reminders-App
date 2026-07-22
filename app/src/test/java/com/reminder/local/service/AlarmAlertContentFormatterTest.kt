@@ -30,6 +30,18 @@ class AlarmAlertContentFormatterTest {
     }
 
     @Test
+    fun prefixesSnoozedAlertsForLockscreenPreview() {
+        val content = AlarmAlertContentFormatter.format(
+            title = "还信用卡",
+            note = null,
+            kind = AlarmAlertKind.SNOOZE
+        )
+
+        assertEquals("稍后提醒：还信用卡", content.title)
+        assertEquals("提醒时间到了", content.previewText)
+    }
+
+    @Test
     fun fallsBackToReadableTextWhenTitleOrNoteIsBlank() {
         val content = AlarmAlertContentFormatter.format(
             title = " ",

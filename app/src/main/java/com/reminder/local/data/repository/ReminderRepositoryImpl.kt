@@ -23,6 +23,11 @@ class ReminderRepositoryImpl @Inject constructor(
 
     override suspend fun update(reminder: Reminder) = dao.update(reminder.toEntity())
 
+    override suspend fun updateIfOccurrenceCurrent(
+        reminder: Reminder,
+        expectedOccurrenceTime: Long
+    ): Boolean = dao.updateIfOccurrenceCurrent(reminder.toEntity(), expectedOccurrenceTime)
+
     override suspend fun delete(reminder: Reminder) = dao.delete(reminder.toEntity())
 
     override suspend fun getAllPending(): List<Reminder> = dao.getAllPending().map { it.toDomain() }

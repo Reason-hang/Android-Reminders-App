@@ -9,6 +9,11 @@ interface AlarmScheduler {
     /** 按 reminder.effectiveTime（即 nextTriggerTime ?: triggerTime）注册一次精确闹钟。 */
     fun scheduleExact(reminder: Reminder)
 
+    /** 用新计划替换旧计划；实现必须在失败时尽力保留/恢复旧计划。 */
+    fun replaceExact(previous: Reminder, updated: Reminder) {
+        scheduleExact(updated)
+    }
+
     /** 取消该提醒对应的闹钟；如果本来就没有注册，是安全的空操作。 */
     fun cancel(reminder: Reminder)
 

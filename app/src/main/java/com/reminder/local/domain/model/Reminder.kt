@@ -18,7 +18,6 @@ data class Reminder(
     val triggerTime: Long,
     val nextTriggerTime: Long? = null,
     val categoryId: Long? = null,
-    val priority: Priority = Priority.MEDIUM,
     val status: ReminderStatus = ReminderStatus.PENDING,
     val repeatType: RepeatType = RepeatType.NONE,
     val repeatEndDate: Long? = null,

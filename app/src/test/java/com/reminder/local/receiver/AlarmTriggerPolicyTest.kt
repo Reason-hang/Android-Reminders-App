@@ -10,11 +10,13 @@ class AlarmTriggerPolicyTest {
     fun advanceAndDueAlarmsBothStartStrongAlert() {
         assertTrue(AlarmTriggerPolicy.shouldStartStrongAlert(AlarmReceiver.KIND_ADVANCE))
         assertTrue(AlarmTriggerPolicy.shouldStartStrongAlert(AlarmReceiver.KIND_DUE))
+        assertTrue(AlarmTriggerPolicy.shouldStartStrongAlert("snooze"))
     }
 
     @Test
     fun onlyDueAlarmProgressesRepeatingReminder() {
         assertFalse(AlarmTriggerPolicy.shouldProgressRepeatingReminder(AlarmReceiver.KIND_ADVANCE))
+        assertFalse(AlarmTriggerPolicy.shouldProgressRepeatingReminder("snooze"))
         assertTrue(AlarmTriggerPolicy.shouldProgressRepeatingReminder(AlarmReceiver.KIND_DUE))
     }
 
@@ -22,5 +24,6 @@ class AlarmTriggerPolicyTest {
     fun advanceAndDueFallbacksRemainAudibleStrongAlerts() {
         assertTrue(AlarmTriggerPolicy.shouldUseNoisyFallback(AlarmReceiver.KIND_ADVANCE))
         assertTrue(AlarmTriggerPolicy.shouldUseNoisyFallback(AlarmReceiver.KIND_DUE))
+        assertTrue(AlarmTriggerPolicy.shouldUseNoisyFallback(AlarmReceiver.KIND_SNOOZE))
     }
 }

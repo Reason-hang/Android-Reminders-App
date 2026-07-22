@@ -15,6 +15,7 @@ object AlarmAlertContentFormatter {
         val displayTitle = when (kind) {
             AlarmAlertKind.DUE -> baseTitle
             AlarmAlertKind.ADVANCE -> "提前提醒：$baseTitle"
+            AlarmAlertKind.SNOOZE -> "稍后提醒：$baseTitle"
         }
 
         return AlarmAlertContent(
@@ -26,7 +27,8 @@ object AlarmAlertContentFormatter {
 
 enum class AlarmAlertKind {
     DUE,
-    ADVANCE;
+    ADVANCE,
+    SNOOZE;
 
     companion object {
         fun fromWireValue(value: String?): AlarmAlertKind =

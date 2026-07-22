@@ -1,5 +1,6 @@
 # Gradle / Android build output
 .gradle/
+.kotlin/
 build/
 **/build/
 
@@ -19,3 +20,16 @@ local.properties
 # Keystores
 *.jks
 *.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+secrets.properties
+.env
+.env.*
+google-services.json
+
+# Deliverables stay outside the source repository
+*.apk
+*.aab
+*.zip

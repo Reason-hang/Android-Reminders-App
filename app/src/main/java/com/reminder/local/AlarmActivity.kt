@@ -36,7 +36,6 @@ import com.reminder.local.domain.alarm.AlarmScheduler
 import com.reminder.local.domain.model.Reminder
 import com.reminder.local.domain.model.RepeatActionScope
 import com.reminder.local.domain.usecase.CompleteReminderUseCase
-import com.reminder.local.notification.NotificationHelper
 import com.reminder.local.receiver.NotificationActionReceiver
 import com.reminder.local.service.AlarmAlertKind
 import com.reminder.local.service.AlarmAlertService
@@ -54,12 +53,12 @@ class AlarmActivity : ComponentActivity() {
 
     @Inject lateinit var reminderRepository: ReminderRepository
     @Inject lateinit var alarmScheduler: AlarmScheduler
-    @Inject lateinit var notificationHelper: NotificationHelper
     @Inject lateinit var completeReminderUseCase: CompleteReminderUseCase
 
     private val reminderState = mutableStateOf<Reminder?>(null)
     private val alarmTimeState = mutableStateOf<Long?>(null)
     private val alarmKindState = mutableStateOf(AlarmAlertKind.DUE)
+    private val actionErrorState = mutableStateOf<String?>(null)
     private var loadReminderJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -70,6 +69,7 @@ class AlarmActivity : ComponentActivity() {
         Log.d(TAG, "onCreate reminderId=$reminderId")
         alarmTimeState.value = intent.getLongExtra(EXTRA_ALARM_TIME, -1L).takeIf { it > 0L }
         alarmKindState.value = AlarmAlertKind.fromWireValue(intent.getStringExtra(EXTRA_ALARM_KIND))
+        actionErrorState.value = null
         loadReminder(reminderId)
 
         setContent {
@@ -78,16 +78,13 @@ class AlarmActivity : ComponentActivity() {
                     reminder = reminderState.value,
                     alarmTime = alarmTimeState.value,
                     alarmKind = alarmKindState.value,
+                    actionError = actionErrorState.value,
                     onClose = { closeAlertOnly() },
                     onSnooze = { snoozeAndClose() },
                     onDone = { markDoneAndClose() }
                 )
             }
         }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -97,6 +94,7 @@ class AlarmActivity : ComponentActivity() {
         Log.d(TAG, "onNewIntent reminderId=$reminderId")
         alarmTimeState.value = intent.getLongExtra(EXTRA_ALARM_TIME, -1L).takeIf { it > 0L }
         alarmKindState.value = AlarmAlertKind.fromWireValue(intent.getStringExtra(EXTRA_ALARM_KIND))
+        actionErrorState.value = null
         loadReminder(reminderId)
     }
 
@@ -121,15 +119,12 @@ class AlarmActivity : ComponentActivity() {
         keyguardManager.requestDismissKeyguard(this, null)
     }
 
-    private fun stopAlert() {
-        stopService(Intent(this, AlarmAlertService::class.java))
-    }
-
     private fun closeAlertOnly() {
         val reminder = reminderState.value
         val reminderId = reminder?.id ?: intent.getLongExtra(EXTRA_REMINDER_ID, -1L)
-        val alarmId = reminder?.alarmId ?: intent.getIntExtra(EXTRA_ALARM_ID, -1)
-        if (reminderId >= 0L && alarmId >= 0) {
+        val alarmId = reminder?.alarmId ?: intent.getIntExtra(EXTRA_ALARM_ID, Int.MIN_VALUE)
+        val occurrenceTime = alarmTimeState.value
+        if (reminderId >= 0L && alarmId != Int.MIN_VALUE && occurrenceTime != null) {
             startService(
                 AlarmAlertService.stopIntent(
                     context = this,
@@ -137,11 +132,12 @@ class AlarmActivity : ComponentActivity() {
                     alarmId = alarmId,
                     title = reminder?.title ?: intent.getStringExtra(EXTRA_TITLE).orEmpty(),
                     note = reminder?.note ?: intent.getStringExtra(EXTRA_NOTE),
-                    kind = alarmKindState.value
+                    kind = alarmKindState.value,
+                    occurrenceTime = occurrenceTime
                 )
             )
         } else {
-            stopAlert()
+            Log.w(TAG, "关闭提醒缺少实例标识，拒绝无条件停止服务")
         }
         finish()
     }
@@ -149,9 +145,7 @@ class AlarmActivity : ComponentActivity() {
     private fun snoozeAndClose() {
         val reminder = reminderState.value ?: return
         lifecycleScope.launch {
-            stopAlert()
-            notificationHelper.cancelNotification(reminder)
-            runCatching {
+            val scheduled = runCatching {
                 alarmScheduler.scheduleSnooze(
                     reminder,
                     NotificationActionReceiver.SNOOZE_DELAY_MILLIS
@@ -160,27 +154,47 @@ class AlarmActivity : ComponentActivity() {
                 // 2026-07 第二轮复查修复：之前这里失败会被完全吞掉，用户点了"稍后提醒"、
                 // 页面正常关闭，但闹钟其实没有注册成功，10 分钟后不会再提醒，且没有任何记录。
                 Log.e(TAG, "稍后提醒调度失败 reminderId=${reminder.id}", it)
+            }.isSuccess
+            if (scheduled) {
+                stopTargetAlert(reminder, retainNotification = false)
+                finish()
+            } else {
+                actionErrorState.value = "稍后提醒设置失败，请重试"
             }
-            finish()
         }
     }
 
     private fun markDoneAndClose() {
         val reminder = reminderState.value ?: return
         lifecycleScope.launch {
-            stopAlert()
-            // 2026-07 第二轮复查修复（重要）：这里之前调用 markDone(reminder) 没有传 scope，
-            // 会用默认值 RepeatActionScope.ALL——对于重复提醒，意味着在强提醒全屏页点一下
-            // "标为完成"，会把这条重复提醒"永久停止"，而不是"完成这一次、继续等下一次"。
-            // 列表页对重复提醒的"完成"操作会先弹窗问"仅本次 / 停止所有重复"，这里却直接静默
-            // 选择了最激进的那个选项，用户很容易在不知情的情况下把"每天吃药"这类重复提醒整个关掉。
-            // 全屏页是一个抢时间关掉响铃的场景，不适合再弹一个选择框打断，所以改成默认 ONCE
-            // （仅完成本次、正常推进到下一次）——和"从通知栏点标为完成"保持一致；
-            // 如果确实想彻底停止这条重复提醒，请到列表页操作（那里会弹窗确认）。
-            completeReminderUseCase.markDone(reminder, RepeatActionScope.ONCE)
-            notificationHelper.cancelNotification(reminder)
-            finish()
+            val success = completeReminderUseCase.markDone(
+                reminder,
+                RepeatActionScope.ONCE,
+                alarmTimeState.value
+            )
+            if (success) {
+                stopTargetAlert(reminder, retainNotification = false)
+                finish()
+            } else {
+                actionErrorState.value = "标为完成失败，请重试"
+            }
         }
+    }
+
+    private fun stopTargetAlert(reminder: Reminder, retainNotification: Boolean) {
+        val occurrenceTime = alarmTimeState.value ?: return
+        startService(
+            AlarmAlertService.stopIntent(
+                context = this,
+                reminderId = reminder.id,
+                alarmId = reminder.alarmId,
+                title = reminder.title,
+                note = reminder.note,
+                kind = alarmKindState.value,
+                occurrenceTime = occurrenceTime,
+                retainNotification = retainNotification
+            )
+        )
     }
 
     companion object {
@@ -199,6 +213,7 @@ private fun AlarmScreen(
     reminder: Reminder?,
     alarmTime: Long?,
     alarmKind: AlarmAlertKind,
+    actionError: String?,
     onClose: () -> Unit,
     onSnooze: () -> Unit,
     onDone: () -> Unit
@@ -219,7 +234,11 @@ private fun AlarmScreen(
             verticalArrangement = Arrangement.Center
         ) {
             Text(
-                text = if (alarmKind == AlarmAlertKind.ADVANCE) "提前提醒" else "提醒事项",
+                text = when (alarmKind) {
+                    AlarmAlertKind.ADVANCE -> "提前提醒"
+                    AlarmAlertKind.SNOOZE -> "稍后提醒"
+                    AlarmAlertKind.DUE -> "提醒事项"
+                },
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary
             )
@@ -249,6 +268,10 @@ private fun AlarmScreen(
                 )
             }
             Spacer(modifier = Modifier.height(44.dp))
+            actionError?.let {
+                Text(it, color = MaterialTheme.colorScheme.error)
+                Spacer(modifier = Modifier.height(12.dp))
+            }
             Button(
                 onClick = onClose,
                 modifier = Modifier.fillMaxWidth()

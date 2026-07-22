@@ -12,8 +12,8 @@ import com.reminder.local.data.db.entity.ReminderEntity
 
 @Database(
     entities = [ReminderEntity::class, CategoryEntity::class],
-    version = 3,
-    exportSchema = false
+    version = 4,
+    exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -36,6 +36,67 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE reminders ADD COLUMN customAdvanceValue INTEGER NOT NULL DEFAULT 1")
                 db.execSQL("ALTER TABLE reminders ADD COLUMN customAdvanceUnit TEXT NOT NULL DEFAULT 'HOURS'")
+            }
+        }
+
+        /**
+         * v4 彻底移除已经下线的 priority 字段，并把 alarmId 唯一性提升为数据库约束。
+         * 历史重复/零值只修复异常行；负数 requestCode/notificationId 对 Android API 合法，
+         * 且与正常生成的正数 alarmId 不冲突。
+         */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS reminders_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        title TEXT NOT NULL,
+                        note TEXT,
+                        triggerTime INTEGER NOT NULL,
+                        nextTriggerTime INTEGER,
+                        categoryId INTEGER,
+                        status TEXT NOT NULL,
+                        repeatType TEXT NOT NULL,
+                        repeatEndDate INTEGER,
+                        advanceReminderType TEXT NOT NULL,
+                        customAdvanceValue INTEGER NOT NULL,
+                        customAdvanceUnit TEXT NOT NULL,
+                        notifyVibrate INTEGER NOT NULL,
+                        notifySound INTEGER NOT NULL,
+                        alarmId INTEGER NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        completedAt INTEGER
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO reminders_new (
+                        id, title, note, triggerTime, nextTriggerTime, categoryId, status,
+                        repeatType, repeatEndDate, advanceReminderType, customAdvanceValue,
+                        customAdvanceUnit, notifyVibrate, notifySound, alarmId, createdAt,
+                        updatedAt, completedAt
+                    )
+                    SELECT
+                        id, title, note, triggerTime, nextTriggerTime, categoryId, status,
+                        repeatType, repeatEndDate, advanceReminderType, customAdvanceValue,
+                        customAdvanceUnit, notifyVibrate, notifySound,
+                        CASE
+                            WHEN alarmId = 0 OR alarmId IN (
+                                SELECT alarmId FROM reminders GROUP BY alarmId HAVING COUNT(*) > 1
+                            ) THEN -((id % 2147483646) + 1)
+                            ELSE alarmId
+                        END,
+                        createdAt, updatedAt, completedAt
+                    FROM reminders
+                    """.trimIndent()
+                )
+                db.execSQL("DROP TABLE reminders")
+                db.execSQL("ALTER TABLE reminders_new RENAME TO reminders")
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS index_reminders_alarmId ON reminders(alarmId)"
+                )
             }
         }
 

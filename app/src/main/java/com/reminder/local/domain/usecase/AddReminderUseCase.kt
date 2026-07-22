@@ -4,6 +4,7 @@ import com.reminder.local.data.repository.ReminderRepository
 import com.reminder.local.domain.alarm.AlarmScheduler
 import com.reminder.local.domain.alarm.AlarmSchedulerImpl
 import com.reminder.local.domain.model.Reminder
+import android.util.Log
 import javax.inject.Inject
 
 sealed interface SaveResult {
@@ -28,22 +29,24 @@ class AddReminderUseCase @Inject constructor(
         if (input.repeatEndDate != null && input.repeatEndDate <= input.triggerTime) {
             return SaveResult.Failure("重复截止日期必须晚于第一次触发时间")
         }
-
-        val prepared = input.copy(
-            alarmId = repository.nextAvailableAlarmId(AlarmSchedulerImpl::generateAlarmId),
-            nextTriggerTime = input.triggerTime,
-            createdAt = now,
-            updatedAt = now
-        )
+        ReminderScheduleValidator.validate(input)?.let { return SaveResult.Failure(it) }
 
         return try {
+            val prepared = input.copy(
+                alarmId = repository.nextAvailableAlarmId(AlarmSchedulerImpl::generateAlarmId),
+                nextTriggerTime = input.triggerTime,
+                createdAt = now,
+                updatedAt = now
+            )
             val id = repository.insert(prepared)
             val saved = prepared.copy(id = id)
             try {
                 alarmScheduler.scheduleExact(saved)
             } catch (alarmError: Exception) {
-                // 闹钟注册失败：回滚数据库写入，保持"整体成功或整体失败"。
-                repository.delete(saved)
+                runCatching { alarmScheduler.cancel(saved) }
+                    .onFailure { Log.e(TAG, "新增失败后取消残留系统闹钟失败 reminderId=$id", it) }
+                runCatching { repository.delete(saved) }
+                    .onFailure { Log.e(TAG, "新增失败后回滚数据库失败 reminderId=$id", it) }
                 return SaveResult.Failure(alarmError.toUserMessage())
             }
             SaveResult.Success(id)
@@ -59,6 +62,10 @@ class AddReminderUseCase @Inject constructor(
             else ->
                 "闹钟注册失败，请检查通知、锁屏显示和后台弹出权限后重试"
         }
+
+    private companion object {
+        const val TAG = "AddReminderUseCase"
+    }
 }
 
 internal suspend fun ReminderRepository.nextAvailableAlarmId(candidate: () -> Int): Int {

@@ -89,6 +89,17 @@ class RepeatCalculatorTest {
     }
 
     @Test
+    fun monthlyThirtyFirstClipsInFebruaryAndRestoresInMarch() {
+        val january = millis(2026, 1, 31, 9, 30)
+
+        val february = RepeatCalculator.computeNext(january, january, RepeatType.MONTHLY)
+        val march = RepeatCalculator.computeNext(january, requireNotNull(february), RepeatType.MONTHLY)
+
+        assertEquals(millis(2026, 2, 28, 9, 30), february)
+        assertEquals(millis(2026, 3, 31, 9, 30), march)
+    }
+
+    @Test
     fun yearlyClipsLeapDayToFebruaryTwentyEight() {
         val trigger = millis(2024, 2, 29, 9, 30)
 

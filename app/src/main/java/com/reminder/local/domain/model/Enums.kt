@@ -1,12 +1,5 @@
 package com.reminder.local.domain.model
 
-/** 旧版本数据库兼容字段；界面和业务逻辑不再使用该字段。 */
-enum class Priority {
-    HIGH,
-    MEDIUM,
-    LOW
-}
-
 /**
  * 提醒状态机：
  * PENDING（待触发）--用户勾选--> DONE

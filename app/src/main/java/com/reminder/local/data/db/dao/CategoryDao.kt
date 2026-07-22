@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import com.reminder.local.data.db.entity.CategoryEntity
 import kotlinx.coroutines.flow.Flow
@@ -32,4 +33,10 @@ interface CategoryDao {
     /** 删除自定义分类前，把归属于它的提醒统一改成"未分类"（categoryId = null）。 */
     @Query("UPDATE reminders SET categoryId = NULL WHERE categoryId = :categoryId")
     suspend fun reassignRemindersToUncategorized(categoryId: Long)
+
+    @Transaction
+    suspend fun deleteAndReassign(entity: CategoryEntity) {
+        reassignRemindersToUncategorized(entity.id)
+        delete(entity)
+    }
 }

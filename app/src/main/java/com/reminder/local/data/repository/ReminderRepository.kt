@@ -9,6 +9,7 @@ interface ReminderRepository {
     suspend fun isAlarmIdInUse(alarmId: Int): Boolean
     suspend fun insert(reminder: Reminder): Long
     suspend fun update(reminder: Reminder)
+    suspend fun updateIfOccurrenceCurrent(reminder: Reminder, expectedOccurrenceTime: Long): Boolean
     suspend fun delete(reminder: Reminder)
     suspend fun getAllPending(): List<Reminder>
     suspend fun markNonRepeatingExpired(now: Long = System.currentTimeMillis())

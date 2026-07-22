@@ -14,6 +14,12 @@ object AlarmIntentIdentity {
     fun alert(reminderId: Long, kind: AlarmAlertKind): String =
         "reminder://alarm/alert/$reminderId/${kind.name}"
 
-    fun action(reminderId: Long, action: String): String =
-        "reminder://alarm/action/$reminderId/$action"
+    fun action(
+        reminderId: Long,
+        alarmId: Int,
+        kind: AlarmAlertKind,
+        occurrenceTime: Long,
+        action: String
+    ): String =
+        "reminder://alarm/action/$reminderId/$alarmId/${kind.name}/$occurrenceTime/$action"
 }
