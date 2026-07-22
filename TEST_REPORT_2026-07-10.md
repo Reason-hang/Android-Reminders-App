@@ -1,5 +1,7 @@
 # 测试报告 — 2026-07-10
 
+> 历史记录：本文件中的“未执行/受限环境”描述只对应 2026-07-10。当前 v1.3 自动化结果和真机边界请读 [HANDOFF_CURRENT.md](HANDOFF_CURRENT.md) 与 `TEST_REPORT_2026-07-18.md`。
+
 > 主集成更新（2026-07-14）：下方内容是外部交付方在受限沙箱中的历史记录，不代表当前主干状态。主集成已在本机 Android SDK 环境执行 `JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home ANDROID_HOME=/opt/homebrew/share/android-commandlinetools ./gradlew testDebugUnitTest assembleRelease`，结果为 `BUILD SUCCESSFUL`。新增 alarmId 碰撞回归测试已通过。真机 ADB 在本次验收时未发现已授权设备，因此真机强提醒场景仍是待验收项。
 
 ## 1. 单元测试

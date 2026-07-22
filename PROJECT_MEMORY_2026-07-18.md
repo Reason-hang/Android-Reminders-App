@@ -2,6 +2,8 @@
 
 本文件是提醒 App 的工程记忆。后续任何 AI 或开发者改动 Alarm、通知、重复、Room 或 APK 交付前都应先读。
 
+> 当前状态以 [HANDOFF_CURRENT.md](HANDOFF_CURRENT.md) 为准。2026-07-22 的当前代码证据为 63/63 JVM 测试、`lintDebug`、`assembleRelease` 和 APK v2 验签通过；红米真机尚未连接，不能将这些证据写成锁屏/后台验收通过。
+
 ## 已发生过的错误
 
 1. 把“通知中心有记录”误当成强提醒链路成功，漏查声音、震动、亮屏、全屏页。
@@ -18,6 +20,7 @@
 12. 单个系统副作用抛错后阻断整个提醒链，且没有足够日志。
 13. README 用历史构建结果覆盖当前状态，造成“文档说通过、实际未验证”。
 14. 交付通用名 APK，无法判断用户安装的是哪个版本。
+15. 旧的一次性提醒通知在用户改期后仍可完成或取消新提醒。
 
 ## 强制规则
 
@@ -34,6 +37,7 @@
 - 用户操作至少携带 `reminderId + alarmId + kind + occurrenceTime`。
 - 禁止无实例的 `stopService()`；旧 occurrence 操作不得停止当前 occurrence。
 - 同一通知 ID 下，取消动作应由实例感知的服务执行，不能在 Action Receiver 里无条件取消。
+- 非重复提醒也必须校验通知的 `occurrenceTime == current.effectiveTime`；改期后的旧操作不准改数据库或取消新闹钟。
 
 ### 数据一致性
 

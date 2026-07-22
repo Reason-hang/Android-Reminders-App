@@ -1,5 +1,7 @@
 # 安全审计报告 - 2026-07-22
 
+> 当前版本、APK 和验收边界以 [HANDOFF_CURRENT.md](HANDOFF_CURRENT.md) 为准；本报告仅覆盖 2026-07-22 所列审计范围。
+
 ## 范围与结论
 
 审计范围为当前 v1.3 工作区的 Kotlin 源码、Manifest、Gradle 配置、Room Schema、`.gitignore` 与已生成 APK 元数据。该 App 是纯离线单机工具，无登录、网络接口、WebView、动态代码执行或外部文件导入链路。

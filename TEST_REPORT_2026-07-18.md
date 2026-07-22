@@ -1,5 +1,7 @@
 # 自动化测试报告 - 2026-07-18
 
+> 当前测试结论、代码基线和未完成项以 [HANDOFF_CURRENT.md](HANDOFF_CURRENT.md) 为准；下方日期明确标为历史的内容只保留复盘价值。
+
 ## 2026-07-22 最终执行更新
 
 已获授权实际执行 `./gradlew clean testDebugUnitTest lintDebug assembleRelease --console=plain --warning-mode=none`，随后从 Gradle XML 汇总：**63 passed / 0 failed / 0 error / 0 skipped**，对应 20 个测试类。独立代码复核发现“旧的一次性提醒通知可完成已改期提醒”后，先新增失败测试、再修复并重跑完整验证；该用例已经包含在 63 项结果中。此前文中“最终回归阻塞”“61 个待执行”均为 2026-07-18 的历史过程，不再代表当前源码状态。

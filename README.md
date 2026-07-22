@@ -2,7 +2,7 @@
 
 面向红米 K80 Pro / HyperOS / Android 16（API 36）的个人离线强提醒 App。当前源码版本为 **v1.3（versionCode 4）**，包名 `com.reminder.local`。
 
-> 当前状态（2026-07-22）：v1.3 的 63/63 JVM 测试、`lintDebug` 和 `assembleRelease` 已实际通过，APK 已复核包名、版本、SHA-256 和 v2 签名。ADB 当前未识别设备，红米 K80 Pro 的锁屏/后台强提醒仍未实机验收；历史 v1.2 结果不替代本结论。详见 [测试报告](TEST_REPORT_2026-07-18.md)、[构建报告](BUILD_APK_REPORT_2026-07-18.md) 和 [真机验收表](REAL_DEVICE_VERIFICATION_2026-07-10.md)。
+> 当前状态（2026-07-22）：v1.3 的 63/63 JVM 测试、`lintDebug` 和 `assembleRelease` 已实际通过，APK 已复核包名、版本、SHA-256 和 v2 签名。ADB 当前未识别设备，红米 K80 Pro 的锁屏/后台强提醒仍未实机验收；历史 v1.2 结果不替代本结论。新窗口接手请先读 [当前交接入口](HANDOFF_CURRENT.md)。
 
 ## 产品定义
 
@@ -170,6 +170,7 @@ ReminderApp-v1.3.apk
 
 ## 文档
 
+- [当前交接入口](HANDOFF_CURRENT.md)：唯一的当前事实入口、新窗口提示词、待办与验收标准。
 - [专业审计报告](AUDIT_REPORT_2026-07-18.md)
 - [自动化测试报告](TEST_REPORT_2026-07-18.md)
 - [构建与 APK 验证报告](BUILD_APK_REPORT_2026-07-18.md)
@@ -177,6 +178,8 @@ ReminderApp-v1.3.apk
 - [红米 K80 Pro 真机验收表](REAL_DEVICE_VERIFICATION_2026-07-10.md)
 - [项目故障记忆与防复发规则](PROJECT_MEMORY_2026-07-18.md)
 - [v1.3 变更记录](CHANGELOG_2026-07-18.md)
+
+`CHANGELOG_2026-07-10.md`、`CHANGELOG_2026-07-17.md`、`TEST_REPORT_2026-07-10.md`、`INTEGRATION_REPORT_2026-07-14.md` 均为历史记录，不能替代以上当前证据。
 
 ## 防复发摘要
 
