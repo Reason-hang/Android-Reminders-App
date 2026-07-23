@@ -2,10 +2,10 @@
 
 > 状态：当前开发基线
 > 更新时间：2026-07-23
-> 版本：v1.4（versionCode 5）
+> 版本：v1.6（versionCode 7）
 > 包名：`com.reminder.local`
 
-Android 本地离线强提醒应用，目标设备为红米 K80 Pro / HyperOS / Android 16（API 36）。当前 v1.4 已完成代码层验证和 Release APK 打包，尚未完成目标真机产品验收。
+Android 本地离线强提醒应用，目标设备为红米 K80 Pro / HyperOS / Android 16（API 36）。当前 v1.6 已完成代码层验证和 Release APK 打包，尚未完成目标真机产品验收。
 
 ## 目录
 
@@ -51,23 +51,25 @@ AlarmScheduler → AlarmManager → AlarmReceiver → AlarmAlertService
 
 ## 本次审计修复
 
-2026-07-23 审计确认并修复四项问题：
+2026-07-23 审计确认并修复六项问题：
 
 - 工作日规则不再单独硬编码北京时间，所有重复规则统一跟随设备时区。
 - 标题最多 50 字符、备注最多 200 字符的限制下沉到领域 UseCase，避免未来非 UI 入口绕过。
 - 列表页在首次进入及 `ON_RESUME` 时刷新精确闹钟权限状态，授权返回后横幅可立即更新。
 - 从仓库 v3 历史源码生成并纳入 `3.json` Schema，新增 v3→v4 仪器迁移测试，覆盖 priority 移除和重复 `alarmId` 修复。
+- v3→v4 脏数据迁移对所有非正或重复 `alarmId` 按主键顺序分配连续负值，避免取模、主键取反和已有负值造成唯一索引碰撞。
+- Room 枚举 Converter 对未知持久化文本作保守降级，避免一条损坏或未迁移的旧记录终止整个查询 Flow。
 
 ## 当前验证状态
 
-证据记录日期为 2026-07-23，对应当前 v1.4 源码：
+证据记录日期为 2026-07-23，对应当前 v1.6 源码：
 
 | 证据层 | 当前结论 |
 |---|---|
-| JVM 测试 | 22 个测试类，69/69 通过，失败/错误/跳过均为 0 |
+| JVM 测试 | 23 个测试类，79/79 通过，失败/错误/跳过均为 0 |
 | Lint | `lintDebug` 无 error；保留 59 warnings、3 hints |
 | Release | `assembleRelease` 实际通过 |
-| APK | 包名 `com.reminder.local`、版本 `1.4 (5)`、未声明 `INTERNET`、v2 签名和 SHA-256 已复核 |
+| APK | 包名 `com.reminder.local`、版本 `1.6 (7)`、未声明 `INTERNET`、v2 签名和 SHA-256 已复核 |
 | Room 迁移仪器测试 | 已编译；无真机或模拟器，尚未实际执行 |
 | 目标真机 | ADB 无设备；锁屏、后台、声音、震动、全屏、重启和并发场景未验收 |
 
@@ -83,7 +85,7 @@ ANDROID_HOME=/opt/homebrew/share/android-commandlinetools \
 ./gradlew clean testDebugUnitTest lintDebug assembleRelease --console=plain
 ```
 
-对外交付文件统一命名为 `ReminderApp-v1.4.apk`，并记录包名、版本、大小、签名方案和 SHA-256。不得提交 APK、keystore、密码、token 或 `local.properties`。
+对外交付文件统一命名为 `ReminderApp-v1.6.apk`，并记录包名、版本、大小、签名方案和 SHA-256。不得提交 APK、keystore、密码、token 或 `local.properties`。
 
 ## 文档入口
 

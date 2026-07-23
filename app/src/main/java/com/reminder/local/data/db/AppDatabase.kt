@@ -42,7 +42,8 @@ abstract class AppDatabase : RoomDatabase() {
         /**
          * v4 彻底移除已经下线的 priority 字段，并把 alarmId 唯一性提升为数据库约束。
          * 历史重复/零值只修复异常行；负数 requestCode/notificationId 对 Android API 合法，
-         * 且与正常生成的正数 alarmId 不冲突。
+         * 且与正常生成的正数 alarmId 不冲突。所有非正或重复历史值按主键顺序分配连续
+         * 负数，避免取模、主键取反或已有负值造成碰撞；该映射以 alarmId 的 Int 可表示范围为边界。
          */
         val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -72,6 +73,13 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 db.execSQL(
                     """
+                    WITH repaired_alarm_ids AS (
+                        SELECT id, -ROW_NUMBER() OVER (ORDER BY id) AS repairedAlarmId
+                        FROM reminders
+                        WHERE alarmId <= 0 OR alarmId IN (
+                            SELECT alarmId FROM reminders GROUP BY alarmId HAVING COUNT(*) > 1
+                        )
+                    )
                     INSERT INTO reminders_new (
                         id, title, note, triggerTime, nextTriggerTime, categoryId, status,
                         repeatType, repeatEndDate, advanceReminderType, customAdvanceValue,
@@ -79,17 +87,13 @@ abstract class AppDatabase : RoomDatabase() {
                         updatedAt, completedAt
                     )
                     SELECT
-                        id, title, note, triggerTime, nextTriggerTime, categoryId, status,
+                        reminders.id, title, note, triggerTime, nextTriggerTime, categoryId, status,
                         repeatType, repeatEndDate, advanceReminderType, customAdvanceValue,
                         customAdvanceUnit, notifyVibrate, notifySound,
-                        CASE
-                            WHEN alarmId = 0 OR alarmId IN (
-                                SELECT alarmId FROM reminders GROUP BY alarmId HAVING COUNT(*) > 1
-                            ) THEN -((id % 2147483646) + 1)
-                            ELSE alarmId
-                        END,
+                        COALESCE(repaired_alarm_ids.repairedAlarmId, alarmId),
                         createdAt, updatedAt, completedAt
                     FROM reminders
+                    LEFT JOIN repaired_alarm_ids ON reminders.id = repaired_alarm_ids.id
                     """.trimIndent()
                 )
                 db.execSQL("DROP TABLE reminders")

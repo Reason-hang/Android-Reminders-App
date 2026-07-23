@@ -2,7 +2,7 @@
 
 > 状态：当前构建记录
 > 更新时间：2026-07-23
-> 版本：v1.4（versionCode 5）
+> 版本：v1.6（versionCode 7）
 
 ## 目录
 
@@ -17,12 +17,12 @@
 | 项目 | 结果 |
 |---|---|
 | 包名 | `com.reminder.local` |
-| 版本 | `1.4 (5)` |
+| 版本 | `1.6 (7)` |
 | minSdk / targetSdk | 31 / 36 |
 | 文件大小 | 48,418,233 bytes |
 | 签名 | v2 有效，Android Debug 证书 |
-| SHA-256 | `517b9924cc6200525a20aa6826e50abe77ee2f23079dd7bcb71d4ca16d0a099e` |
-| 对外交付名 | `ReminderApp-v1.4.apk` |
+| SHA-256 | `ea41969b0f8addd7b3df0288b399082de719601717c2ce91148644cd1a783245` |
+| 对外交付名 | `ReminderApp-v1.6.apk` |
 
 ## 验证命令
 

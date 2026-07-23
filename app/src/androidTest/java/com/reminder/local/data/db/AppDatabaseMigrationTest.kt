@@ -58,7 +58,40 @@ class AppDatabaseMigrationTest {
         }
     }
 
-    private fun reminderInsertSql(id: Int, title: String, alarmId: Int): String =
+    @Test
+    fun migrationFromVersionThreeRepairsZeroNegativeAndDuplicateAlarmIdsWithoutCollision() {
+        helper.createDatabase(databaseName, 3).apply {
+            execSQL(reminderInsertSql(1, "第一条", 9))
+            execSQL(reminderInsertSql(2_147_483_647, "第二条", 9))
+            execSQL(reminderInsertSql(3, "第三条", -1))
+            execSQL(reminderInsertSql(4, "第四条", 0))
+            close()
+        }
+
+        helper.runMigrationsAndValidate(
+            databaseName,
+            4,
+            true,
+            AppDatabase.MIGRATION_3_4
+        ).use { database ->
+            database.query("SELECT id, alarmId FROM reminders ORDER BY id").use { alarms ->
+                val values = buildMap {
+                    val idIndex = alarms.getColumnIndexOrThrow("id")
+                    val alarmIndex = alarms.getColumnIndexOrThrow("alarmId")
+                    while (alarms.moveToNext()) {
+                        put(alarms.getLong(idIndex), alarms.getInt(alarmIndex))
+                    }
+                }
+
+                assertEquals(
+                    mapOf(1L to -1, 3L to -2, 4L to -3, 2_147_483_647L to -4),
+                    values
+                )
+            }
+        }
+    }
+
+    private fun reminderInsertSql(id: Long, title: String, alarmId: Int): String =
         """
         INSERT INTO reminders (
             id, title, note, triggerTime, nextTriggerTime, categoryId, priority, status,

@@ -12,23 +12,39 @@ class Converters {
     fun statusToString(value: ReminderStatus): String = value.name
 
     @TypeConverter
-    fun stringToStatus(value: String): ReminderStatus = ReminderStatus.valueOf(value)
+    fun stringToStatus(value: String): ReminderStatus = try {
+        ReminderStatus.valueOf(value)
+    } catch (_: IllegalArgumentException) {
+        ReminderStatus.PENDING
+    }
 
     @TypeConverter
     fun repeatTypeToString(value: RepeatType): String = value.name
 
     @TypeConverter
-    fun stringToRepeatType(value: String): RepeatType = RepeatType.valueOf(value)
+    fun stringToRepeatType(value: String): RepeatType = try {
+        RepeatType.valueOf(value)
+    } catch (_: IllegalArgumentException) {
+        RepeatType.NONE
+    }
 
     @TypeConverter
     fun advanceReminderTypeToString(value: AdvanceReminderType): String = value.name
 
     @TypeConverter
-    fun stringToAdvanceReminderType(value: String): AdvanceReminderType = AdvanceReminderType.valueOf(value)
+    fun stringToAdvanceReminderType(value: String): AdvanceReminderType = try {
+        AdvanceReminderType.valueOf(value)
+    } catch (_: IllegalArgumentException) {
+        AdvanceReminderType.NONE
+    }
 
     @TypeConverter
     fun advanceReminderUnitToString(value: AdvanceReminderUnit): String = value.name
 
     @TypeConverter
-    fun stringToAdvanceReminderUnit(value: String): AdvanceReminderUnit = AdvanceReminderUnit.valueOf(value)
+    fun stringToAdvanceReminderUnit(value: String): AdvanceReminderUnit = try {
+        AdvanceReminderUnit.valueOf(value)
+    } catch (_: IllegalArgumentException) {
+        AdvanceReminderUnit.HOURS
+    }
 }
