@@ -55,6 +55,7 @@ class ReminderListViewModel @Inject constructor(
 
     private val selectedCategoryId = MutableStateFlow(ALL_CATEGORY_FILTER_ID)
     private val dialogState = MutableStateFlow(Pair<Reminder?, Reminder?>(null, null))
+    private val exactAlarmGranted = MutableStateFlow(PermissionUtils.canScheduleExactAlarms(context))
 
     private val _events = MutableSharedFlow<ListEvent>()
     val events = _events.asSharedFlow()
@@ -63,8 +64,9 @@ class ReminderListViewModel @Inject constructor(
         reminderRepository.observeAll(),
         categoryRepository.observeAll(),
         selectedCategoryId,
-        dialogState
-    ) { reminders, categories, selectedId, dialogs ->
+        dialogState,
+        exactAlarmGranted
+    ) { reminders, categories, selectedId, dialogs, isExactAlarmGranted ->
         val filtered = when (selectedId) {
             ALL_CATEGORY_FILTER_ID -> reminders
             UNCATEGORIZED_FILTER_ID -> reminders.filter { it.categoryId == null }
@@ -81,7 +83,7 @@ class ReminderListViewModel @Inject constructor(
             categories = categories,
             categoryMap = categories.associateBy { it.id },
             selectedCategoryId = selectedId,
-            exactAlarmGranted = PermissionUtils.canScheduleExactAlarms(context),
+            exactAlarmGranted = isExactAlarmGranted,
             pendingDeleteReminder = dialogs.first,
             pendingCompleteScopeReminder = dialogs.second
         )
@@ -89,6 +91,10 @@ class ReminderListViewModel @Inject constructor(
 
     fun selectCategory(id: Long) {
         selectedCategoryId.value = id
+    }
+
+    fun refreshExactAlarmPermission() {
+        exactAlarmGranted.value = PermissionUtils.canScheduleExactAlarms(context)
     }
 
     /** 点击勾选框 或 右滑：非重复直接完成/取消完成；重复提醒需要先问清楚"仅本次"还是"全部"。 */

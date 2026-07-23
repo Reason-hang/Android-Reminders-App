@@ -14,8 +14,8 @@ android {
         applicationId = "com.reminder.local"
         minSdk = 31
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 5
+        versionName = "1.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -94,6 +94,11 @@ dependencies {
 
     // Unit tests
     testImplementation("junit:junit:4.13.2")
+
+    // Instrumented migration tests
+    androidTestImplementation("androidx.room:room-testing:2.8.3")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }
 
 kapt {

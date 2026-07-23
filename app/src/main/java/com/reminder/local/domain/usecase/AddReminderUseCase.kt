@@ -22,6 +22,9 @@ class AddReminderUseCase @Inject constructor(
     private val alarmScheduler: AlarmScheduler
 ) {
     suspend operator fun invoke(input: Reminder): SaveResult {
+        ReminderContentValidator.validate(input.title, input.note)?.let {
+            return SaveResult.Failure(it)
+        }
         val now = System.currentTimeMillis()
         if (input.triggerTime <= now) {
             return SaveResult.TimeAlreadyPassed()

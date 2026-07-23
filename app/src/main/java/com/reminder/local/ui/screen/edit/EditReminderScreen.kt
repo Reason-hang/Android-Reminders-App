@@ -69,6 +69,7 @@ import com.reminder.local.domain.model.AdvanceReminderType
 import com.reminder.local.domain.model.AdvanceReminderUnit
 import com.reminder.local.domain.model.RepeatActionScope
 import com.reminder.local.domain.model.RepeatType
+import com.reminder.local.domain.usecase.ReminderContentValidator
 import com.reminder.local.ui.components.ConfirmDialog
 import com.reminder.local.ui.components.RepeatScopeDialog
 import com.reminder.local.ui.components.WheelItemPosition
@@ -164,7 +165,7 @@ fun EditReminderScreen(
                 isError = uiState.titleError != null,
                 supportingText = {
                     Text(
-                        uiState.titleError ?: "${uiState.title.length}/$TITLE_MAX_LENGTH"
+                        uiState.titleError ?: "${uiState.title.length}/${ReminderContentValidator.TITLE_MAX_LENGTH}"
                     )
                 },
                 modifier = Modifier.fillMaxWidth()
@@ -176,7 +177,7 @@ fun EditReminderScreen(
                 value = uiState.note,
                 onValueChange = viewModel::onNoteChange,
                 label = { Text("备注（可选）") },
-                supportingText = { Text("${uiState.note.length}/$NOTE_MAX_LENGTH") },
+                supportingText = { Text("${uiState.note.length}/${ReminderContentValidator.NOTE_MAX_LENGTH}") },
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2
             )

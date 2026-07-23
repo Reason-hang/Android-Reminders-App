@@ -3,6 +3,7 @@ package com.reminder.local.domain.usecase
 import com.reminder.local.domain.model.RepeatType
 import java.time.LocalDateTime
 import java.time.ZoneId
+import java.util.TimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -76,6 +77,29 @@ class RepeatCalculatorTest {
 
         assertEquals(beijingMillis(2026, 7, 7, 9, 30), tuesdayNext)
         assertEquals(beijingMillis(2026, 7, 13, 9, 30), nextMonday)
+    }
+
+    @Test
+    fun workdaysFollowTheDeviceTimezone() {
+        val original = TimeZone.getDefault()
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("America/Los_Angeles"))
+            val deviceZone = ZoneId.systemDefault()
+            val friday = LocalDateTime.of(2026, 7, 10, 9, 30)
+                .atZone(deviceZone)
+                .toInstant()
+                .toEpochMilli()
+
+            val next = RepeatCalculator.computeNext(friday, friday, RepeatType.WORKDAYS)
+
+            val expected = LocalDateTime.of(2026, 7, 13, 9, 30)
+                .atZone(deviceZone)
+                .toInstant()
+                .toEpochMilli()
+            assertEquals(expected, next)
+        } finally {
+            TimeZone.setDefault(original)
+        }
     }
 
     @Test

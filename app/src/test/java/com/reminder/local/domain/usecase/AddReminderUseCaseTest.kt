@@ -50,6 +50,28 @@ class AddReminderUseCaseTest {
         assertEquals(202, alarmId)
     }
 
+    @Test
+    fun titleLongerThanFiftyCharactersIsRejectedBeforePersistence() = runBlocking {
+        val repository = FakeReminderRepository()
+        val useCase = AddReminderUseCase(repository, ThrowingAlarmScheduler(IllegalStateException("unused")))
+
+        val result = useCase(futureReminder().copy(title = "a".repeat(51)))
+
+        assertEquals(SaveResult.Failure("标题最多 50 个字符"), result)
+        assertTrue(!repository.deletedAfterInsert)
+    }
+
+    @Test
+    fun noteLongerThanTwoHundredCharactersIsRejectedBeforePersistence() = runBlocking {
+        val repository = FakeReminderRepository()
+        val useCase = AddReminderUseCase(repository, ThrowingAlarmScheduler(IllegalStateException("unused")))
+
+        val result = useCase(futureReminder().copy(note = "a".repeat(201)))
+
+        assertEquals(SaveResult.Failure("备注最多 200 个字符"), result)
+        assertTrue(!repository.deletedAfterInsert)
+    }
+
     private fun futureReminder(): Reminder =
         Reminder(
             title = "测试提醒",

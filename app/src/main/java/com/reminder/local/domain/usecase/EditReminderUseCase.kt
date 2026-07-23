@@ -25,6 +25,9 @@ class EditReminderUseCase @Inject constructor(
 ) {
     suspend operator fun invoke(updated: Reminder): EditResult {
         val old = repository.getById(updated.id) ?: return EditResult.Failure("提醒不存在")
+        ReminderContentValidator.validate(updated.title, updated.note)?.let {
+            return EditResult.Failure(it)
+        }
         val now = System.currentTimeMillis()
         val timeChanged = updated.triggerTime != old.triggerTime
         val scheduleChanged = timeChanged ||

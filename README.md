@@ -1,17 +1,18 @@
 # Android Reminders App
 
 > 状态：当前开发基线
-> 更新时间：2026-07-22
-> 版本：v1.3（versionCode 4）
+> 更新时间：2026-07-23
+> 版本：v1.4（versionCode 5）
 > 包名：`com.reminder.local`
 
-Android 本地离线强提醒应用，目标设备为红米 K80 Pro / HyperOS / Android 16（API 36）。当前代码已完成代码层验证，但尚未完成目标真机产品验收。
+Android 本地离线强提醒应用，目标设备为红米 K80 Pro / HyperOS / Android 16（API 36）。当前 v1.4 已完成代码层验证和 Release APK 打包，尚未完成目标真机产品验收。
 
 ## 目录
 
 - [产品边界](#产品边界)
 - [核心语义](#核心语义)
 - [架构与工程约束](#架构与工程约束)
+- [本次审计修复](#本次审计修复)
 - [当前验证状态](#当前验证状态)
 - [构建与交付](#构建与交付)
 - [文档入口](#文档入口)
@@ -26,7 +27,7 @@ Android 本地离线强提醒应用，目标设备为红米 K80 Pro / HyperOS / 
 ## 核心语义
 
 - `ADVANCE`、`DUE`、`SNOOZE` 是独立事件；只有 `DUE` 可以推进重复周期。
-- `triggerTime` 是重复模板，`nextTriggerTime` 是实际下一次时间；月末重复不能永久漂移。
+- 所有重复规则按设备当前时区计算；`triggerTime` 是重复模板，`nextTriggerTime` 是实际下一次时间。
 - 所有闹钟、通知和全屏操作携带 `reminderId + alarmId + kind + occurrenceTime`，旧事件不能停止或修改新事件。
 - “关闭”停止当前打断但保留静音通知；“稍后”和“完成”结束当前打断并移除当前通知。
 - Room 与 AlarmManager 不构成跨系统事务，新增、编辑、完成、删除和恢复必须有失败补偿与日志。
@@ -44,23 +45,33 @@ AlarmScheduler → AlarmManager → AlarmReceiver → AlarmAlertService
 ```
 
 - 模块单向依赖，内容、配置和逻辑分离。
-- Room v4 结构变化必须同步 Model、Entity、DAO、Mapper、Migration、Schema 和测试。
+- Room 结构变化必须同步 Model、Entity、DAO、Mapper、Migration、Schema 和测试。
 - 不增加 `INTERNET`；PendingIntent 使用 immutable；业务组件默认不导出；日志不记录标题和备注正文。
 - Release 当前使用 Debug 签名，只适合个人直装和测试。
 
+## 本次审计修复
+
+2026-07-23 审计确认并修复四项问题：
+
+- 工作日规则不再单独硬编码北京时间，所有重复规则统一跟随设备时区。
+- 标题最多 50 字符、备注最多 200 字符的限制下沉到领域 UseCase，避免未来非 UI 入口绕过。
+- 列表页在首次进入及 `ON_RESUME` 时刷新精确闹钟权限状态，授权返回后横幅可立即更新。
+- 从仓库 v3 历史源码生成并纳入 `3.json` Schema，新增 v3→v4 仪器迁移测试，覆盖 priority 移除和重复 `alarmId` 修复。
+
 ## 当前验证状态
 
-证据记录日期为 2026-07-22，对应当前 v1.3 代码基线：
+证据记录日期为 2026-07-23，对应当前 v1.4 源码：
 
 | 证据层 | 当前结论 |
 |---|---|
-| JVM 测试 | 20 个测试类，63/63 通过 |
-| Lint | `lintDebug` 通过；保留 55 warnings、3 hints |
-| Release | `assembleRelease` 通过 |
-| APK | 包名、版本、未声明 `INTERNET`、v2 签名和 SHA-256 已复核 |
+| JVM 测试 | 22 个测试类，69/69 通过，失败/错误/跳过均为 0 |
+| Lint | `lintDebug` 无 error；保留 59 warnings、3 hints |
+| Release | `assembleRelease` 实际通过 |
+| APK | 包名 `com.reminder.local`、版本 `1.4 (5)`、未声明 `INTERNET`、v2 签名和 SHA-256 已复核 |
+| Room 迁移仪器测试 | 已编译；无真机或模拟器，尚未实际执行 |
 | 目标真机 | ADB 无设备；锁屏、后台、声音、震动、全屏、重启和并发场景未验收 |
 
-因此当前状态是“代码层验证通过、完整产品验收未通过也未失败”，不能把自动化结果写成红米 K80 Pro 真机通过。
+因此当前状态是“代码层验证通过、完整产品验收未通过也未失败”，不能把自动化结果或 APK 验签写成红米 K80 Pro 真机通过。
 
 ## 构建与交付
 
@@ -72,8 +83,8 @@ ANDROID_HOME=/opt/homebrew/share/android-commandlinetools \
 ./gradlew clean testDebugUnitTest lintDebug assembleRelease --console=plain
 ```
 
-对外交付文件统一命名为 `ReminderApp-v1.3.apk`，并记录包名、版本、大小、签名方案和 SHA-256。不得提交 APK、keystore、密码、token 或 `local.properties`。
+对外交付文件统一命名为 `ReminderApp-v1.4.apk`，并记录包名、版本、大小、签名方案和 SHA-256。不得提交 APK、keystore、密码、token 或 `local.properties`。
 
 ## 文档入口
 
-完整文档按主题维护于 [文档总索引](docs/00-文档总索引.md)。接手任务先读 [当前交接](docs/04-项目交接/当前交接.md)，再按任务阅读测试、验收和安全文档。
+完整文档按主题维护于 [文档总索引](docs/00-文档总索引.md)。接手任务先读 [当前交接](docs/04-项目交接/当前交接.md)，再按任务阅读审计、测试、验收和安全文档。

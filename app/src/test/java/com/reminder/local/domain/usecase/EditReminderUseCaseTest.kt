@@ -61,6 +61,21 @@ class EditReminderUseCaseTest {
         assertEquals(old, scheduler.scheduled[old.alarmId])
     }
 
+    @Test
+    fun noteLongerThanTwoHundredCharactersDoesNotReplaceExistingAlarm() = runBlocking {
+        val old = futureReminder()
+        val repository = InMemoryReminderRepository(listOf(old))
+        val scheduler = RecordingAlarmScheduler(listOf(old))
+
+        val result = EditReminderUseCase(repository, scheduler)(
+            old.copy(note = "a".repeat(201))
+        )
+
+        assertEquals(EditResult.Failure("备注最多 200 个字符"), result)
+        assertEquals(old, repository.requireReminder(old.id))
+        assertEquals(old, scheduler.scheduled[old.alarmId])
+    }
+
     private fun futureReminder(): Reminder = Reminder(
         id = 1L,
         title = "编辑测试",

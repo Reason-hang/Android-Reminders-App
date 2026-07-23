@@ -14,10 +14,6 @@ import java.time.temporal.TemporalAdjusters
  * 不会一直卡在 28/30 日，也不会产生日期漂移。
  */
 object RepeatCalculator {
-
-    private val zone: ZoneId = ZoneId.systemDefault()
-    private val beijingZone: ZoneId = ZoneId.of("Asia/Shanghai")
-
     /**
      * @param baseTriggerTime 用户最初设置的触发时间，永远不变，用来提供"目标日/时/分"模板。
      * @param fromTime        刚刚触发（或者需要往后推算）的时间点。
@@ -25,12 +21,13 @@ object RepeatCalculator {
      */
     fun computeNext(baseTriggerTime: Long, fromTime: Long, type: RepeatType): Long? {
         if (type == RepeatType.NONE) return null
+        val zone = ZoneId.systemDefault()
         val from = Instant.ofEpochMilli(fromTime).atZone(zone)
         return when (type) {
             RepeatType.HOURLY -> from.plusHours(1).toInstant().toEpochMilli()
             RepeatType.EVERY_FIVE_HOURS -> from.plusHours(5).toInstant().toEpochMilli()
             RepeatType.DAILY -> from.plusDays(1).toInstant().toEpochMilli()
-            RepeatType.WORKDAYS -> computeNextWorkday(fromTime)
+            RepeatType.WORKDAYS -> computeNextWorkday(fromTime, zone)
             RepeatType.WEEKLY -> from.plusWeeks(1).toInstant().toEpochMilli()
             RepeatType.WEEKLY_SUNDAY -> from.with(TemporalAdjusters.next(DayOfWeek.SUNDAY))
                 .toInstant().toEpochMilli()
@@ -43,15 +40,20 @@ object RepeatCalculator {
                 from.with(TemporalAdjusters.next(nextWeekendDay)).toInstant().toEpochMilli()
             }
             RepeatType.BIWEEKLY -> from.plusWeeks(2).toInstant().toEpochMilli()
-            RepeatType.MONTHLY -> computeNextMonth(baseTriggerTime, fromTime, 1)
-            RepeatType.QUARTERLY -> computeNextMonth(baseTriggerTime, fromTime, 3)
-            RepeatType.SEMIANNUALLY -> computeNextMonth(baseTriggerTime, fromTime, 6)
-            RepeatType.YEARLY -> computeNextMonth(baseTriggerTime, fromTime, 12)
+            RepeatType.MONTHLY -> computeNextMonth(baseTriggerTime, fromTime, 1, zone)
+            RepeatType.QUARTERLY -> computeNextMonth(baseTriggerTime, fromTime, 3, zone)
+            RepeatType.SEMIANNUALLY -> computeNextMonth(baseTriggerTime, fromTime, 6, zone)
+            RepeatType.YEARLY -> computeNextMonth(baseTriggerTime, fromTime, 12, zone)
             RepeatType.NONE -> null
         }
     }
 
-    private fun computeNextMonth(baseTriggerTime: Long, fromTime: Long, monthStep: Long): Long {
+    private fun computeNextMonth(
+        baseTriggerTime: Long,
+        fromTime: Long,
+        monthStep: Long,
+        zone: ZoneId
+    ): Long {
         val baseDay = Instant.ofEpochMilli(baseTriggerTime).atZone(zone).dayOfMonth
         val from = Instant.ofEpochMilli(fromTime).atZone(zone)
         val nextMonth = from.plusMonths(monthStep)
@@ -60,8 +62,8 @@ object RepeatCalculator {
         return nextMonth.withDayOfMonth(targetDay).toInstant().toEpochMilli()
     }
 
-    private fun computeNextWorkday(fromTime: Long): Long {
-        var next = Instant.ofEpochMilli(fromTime).atZone(beijingZone).plusDays(1)
+    private fun computeNextWorkday(fromTime: Long, zone: ZoneId): Long {
+        var next = Instant.ofEpochMilli(fromTime).atZone(zone).plusDays(1)
         while (next.dayOfWeek == DayOfWeek.SATURDAY || next.dayOfWeek == DayOfWeek.SUNDAY) {
             next = next.plusDays(1)
         }

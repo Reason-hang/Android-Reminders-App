@@ -16,6 +16,7 @@ import com.reminder.local.domain.model.ReminderStatus
 import com.reminder.local.domain.usecase.AddReminderUseCase
 import com.reminder.local.domain.usecase.DeleteReminderUseCase
 import com.reminder.local.domain.usecase.EditReminderUseCase
+import com.reminder.local.domain.usecase.ReminderContentValidator
 import com.reminder.local.domain.usecase.SaveResult
 import com.reminder.local.domain.usecase.EditResult
 import com.reminder.local.ui.navigation.Routes
@@ -26,9 +27,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-
-const val TITLE_MAX_LENGTH = 50
-const val NOTE_MAX_LENGTH = 200
 
 data class EditReminderUiState(
     val id: Long = -1L,
@@ -112,13 +110,13 @@ class EditReminderViewModel @Inject constructor(
     }
 
     fun onTitleChange(value: String) {
-        if (value.length <= TITLE_MAX_LENGTH) {
+        if (value.length <= ReminderContentValidator.TITLE_MAX_LENGTH) {
             _uiState.value = _uiState.value.copy(title = value, titleError = null)
         }
     }
 
     fun onNoteChange(value: String) {
-        if (value.length <= NOTE_MAX_LENGTH) {
+        if (value.length <= ReminderContentValidator.NOTE_MAX_LENGTH) {
             _uiState.value = _uiState.value.copy(note = value)
         }
     }
