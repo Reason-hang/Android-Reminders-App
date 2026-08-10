@@ -8,6 +8,7 @@ enum class AlarmBackgroundLaunchMode {
 
 object AlarmAlertLaunchPolicy {
     const val WAKE_SCREEN_TIMEOUT_MILLIS: Long = 15_000L
+    const val ALERT_AUTO_STOP_TIMEOUT_MILLIS: Long = 10 * 60 * 1_000L
 
     fun needsBackgroundActivityLaunchOptions(sdkInt: Int): Boolean = sdkInt >= 34
 

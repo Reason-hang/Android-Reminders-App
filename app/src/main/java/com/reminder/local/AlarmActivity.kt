@@ -1,8 +1,10 @@
 package com.reminder.local
 
 import android.app.KeyguardManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Bundle
 import android.util.Log
 import android.view.WindowManager
@@ -31,6 +33,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
+import androidx.core.content.ContextCompat
 import com.reminder.local.data.repository.ReminderRepository
 import com.reminder.local.domain.alarm.AlarmScheduler
 import com.reminder.local.domain.model.Reminder
@@ -38,10 +41,13 @@ import com.reminder.local.domain.model.RepeatActionScope
 import com.reminder.local.domain.usecase.CompleteReminderUseCase
 import com.reminder.local.receiver.NotificationActionReceiver
 import com.reminder.local.service.AlarmAlertKind
+import com.reminder.local.service.AlarmAlertInstanceKey
+import com.reminder.local.service.AlarmAlertLaunchPolicy
 import com.reminder.local.service.AlarmAlertService
 import com.reminder.local.ui.theme.ReminderAppTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
@@ -60,10 +66,27 @@ class AlarmActivity : ComponentActivity() {
     private val alarmKindState = mutableStateOf(AlarmAlertKind.DUE)
     private val actionErrorState = mutableStateOf<String?>(null)
     private var loadReminderJob: Job? = null
+    private var autoDismissFallbackJob: Job? = null
+    private var autoDismissReceiverRegistered = false
+    private val autoDismissReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != AlarmAlertService.ACTION_AUTO_DISMISS) return
+            val dismissedInstance = alertInstanceFrom(intent) ?: return
+            if (dismissedInstance == currentAlertInstance()) {
+                Log.i(
+                    TAG,
+                    "收到自动结束通知 alarmId=${dismissedInstance.alarmId} " +
+                        "kind=${dismissedInstance.kind}"
+                )
+                finishAfterAutoDismiss()
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         configureAlarmWindow()
+        registerAutoDismissReceiver()
 
         val reminderId = intent.getLongExtra(EXTRA_REMINDER_ID, -1L)
         Log.d(TAG, "onCreate reminderId=$reminderId")
@@ -71,6 +94,7 @@ class AlarmActivity : ComponentActivity() {
         alarmKindState.value = AlarmAlertKind.fromWireValue(intent.getStringExtra(EXTRA_ALARM_KIND))
         actionErrorState.value = null
         loadReminder(reminderId)
+        scheduleAutoDismissFallback()
 
         setContent {
             ReminderAppTheme {
@@ -96,6 +120,16 @@ class AlarmActivity : ComponentActivity() {
         alarmKindState.value = AlarmAlertKind.fromWireValue(intent.getStringExtra(EXTRA_ALARM_KIND))
         actionErrorState.value = null
         loadReminder(reminderId)
+        scheduleAutoDismissFallback()
+    }
+
+    override fun onDestroy() {
+        autoDismissFallbackJob?.cancel()
+        if (autoDismissReceiverRegistered) {
+            unregisterReceiver(autoDismissReceiver)
+            autoDismissReceiverRegistered = false
+        }
+        super.onDestroy()
     }
 
     private fun loadReminder(reminderId: Long) {
@@ -117,6 +151,55 @@ class AlarmActivity : ComponentActivity() {
         )
         val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
         keyguardManager.requestDismissKeyguard(this, null)
+    }
+
+    private fun registerAutoDismissReceiver() {
+        ContextCompat.registerReceiver(
+            this,
+            autoDismissReceiver,
+            IntentFilter(AlarmAlertService.ACTION_AUTO_DISMISS),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        autoDismissReceiverRegistered = true
+    }
+
+    private fun scheduleAutoDismissFallback() {
+        autoDismissFallbackJob?.cancel()
+        val scheduledInstance = currentAlertInstance() ?: return
+        autoDismissFallbackJob = lifecycleScope.launch {
+            delay(AlarmAlertLaunchPolicy.ALERT_AUTO_STOP_TIMEOUT_MILLIS)
+            if (scheduledInstance == currentAlertInstance()) {
+                Log.w(
+                    TAG,
+                    "服务未通知页面结束，执行全屏页超时兜底 alarmId=${scheduledInstance.alarmId} " +
+                        "kind=${scheduledInstance.kind}"
+                )
+                finishAfterAutoDismiss()
+            }
+        }
+    }
+
+    private fun currentAlertInstance(): AlarmAlertInstanceKey? = alertInstanceFrom(intent)
+
+    private fun alertInstanceFrom(source: Intent): AlarmAlertInstanceKey? {
+        val alarmId = source.getIntExtra(EXTRA_ALARM_ID, Int.MIN_VALUE)
+        val occurrenceTime = source.getLongExtra(EXTRA_ALARM_TIME, -1L)
+        if (alarmId == Int.MIN_VALUE || occurrenceTime <= 0L) return null
+        return AlarmAlertInstanceKey(
+            alarmId = alarmId,
+            kind = AlarmAlertKind.fromWireValue(source.getStringExtra(EXTRA_ALARM_KIND)),
+            occurrenceTime = occurrenceTime
+        )
+    }
+
+    private fun finishAfterAutoDismiss() {
+        autoDismissFallbackJob?.cancel()
+        window.clearFlags(
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+        )
+        setTurnScreenOn(false)
+        finish()
     }
 
     private fun closeAlertOnly() {

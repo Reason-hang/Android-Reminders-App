@@ -42,4 +42,14 @@ class AlarmAlertConcurrencyPolicyTest {
         assertTrue(AlarmAlertConcurrencyPolicy.shouldRestartPlayback(101))
         assertFalse(AlarmAlertConcurrencyPolicy.shouldRestartPlayback(null))
     }
+
+    @Test
+    fun staleTimeoutCannotStopNewerAlertInstance() {
+        val advance = AlarmAlertInstanceKey(101, AlarmAlertKind.ADVANCE, 1_000L)
+        val due = AlarmAlertInstanceKey(101, AlarmAlertKind.DUE, 1_000L)
+
+        assertFalse(AlarmAlertConcurrencyPolicy.timeoutTargetsCurrent(due, advance))
+        assertFalse(AlarmAlertConcurrencyPolicy.timeoutTargetsCurrent(null, advance))
+        assertTrue(AlarmAlertConcurrencyPolicy.timeoutTargetsCurrent(due, due))
+    }
 }

@@ -8,6 +8,11 @@ import org.junit.Test
 class AlarmAlertLaunchPolicyTest {
 
     @Test
+    fun strongAlertAutoStopsAfterTenMinutes() {
+        assertEquals(600_000L, AlarmAlertLaunchPolicy.ALERT_AUTO_STOP_TIMEOUT_MILLIS)
+    }
+
+    @Test
     fun backgroundActivityOptionsAreNeededFromAndroid14() {
         assertFalse(AlarmAlertLaunchPolicy.needsBackgroundActivityLaunchOptions(33))
         assertTrue(AlarmAlertLaunchPolicy.needsBackgroundActivityLaunchOptions(34))

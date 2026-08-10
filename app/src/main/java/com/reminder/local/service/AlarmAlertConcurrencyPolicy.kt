@@ -10,6 +10,11 @@ object AlarmAlertConcurrencyPolicy {
         current: AlarmAlertInstanceKey?,
         action: AlarmAlertInstanceKey
     ): Boolean = current == null || current == action
+
+    fun timeoutTargetsCurrent(
+        current: AlarmAlertInstanceKey?,
+        scheduled: AlarmAlertInstanceKey
+    ): Boolean = current == scheduled
 }
 
 data class AlarmAlertInstanceKey(

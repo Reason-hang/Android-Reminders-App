@@ -16,7 +16,9 @@ import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -45,6 +47,8 @@ class AlarmAlertService : Service() {
     private var currentReminderId: Long? = null
     private var currentContent: AlarmAlertContent? = null
     private var currentInstance: AlarmAlertInstanceKey? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var autoStopRunnable: Runnable? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -171,6 +175,7 @@ class AlarmAlertService : Service() {
                     stopSelf(startId)
                     return START_NOT_STICKY
                 }
+                scheduleAutoStop(incomingInstance)
                 return START_STICKY
             }
             else -> return START_NOT_STICKY
@@ -179,8 +184,75 @@ class AlarmAlertService : Service() {
 
     override fun onDestroy() {
         Log.d(TAG, "onDestroy alarmId=$currentNotificationId")
+        cancelAutoStop()
         stopRingtoneAndVibration()
         super.onDestroy()
+    }
+
+    private fun scheduleAutoStop(instance: AlarmAlertInstanceKey) {
+        cancelAutoStop()
+        val runnable = Runnable { autoStopAlert(instance) }
+        autoStopRunnable = runnable
+        mainHandler.postDelayed(runnable, AlarmAlertLaunchPolicy.ALERT_AUTO_STOP_TIMEOUT_MILLIS)
+        Log.d(TAG, "已安排强提醒自动结束 alarmId=${instance.alarmId} kind=${instance.kind}")
+    }
+
+    private fun cancelAutoStop() {
+        autoStopRunnable?.let(mainHandler::removeCallbacks)
+        autoStopRunnable = null
+    }
+
+    private fun autoStopAlert(scheduledInstance: AlarmAlertInstanceKey) {
+        if (
+            !AlarmAlertConcurrencyPolicy.timeoutTargetsCurrent(
+                currentInstance,
+                scheduledInstance
+            )
+        ) {
+            Log.d(
+                TAG,
+                "忽略旧提醒的自动结束 alarmId=${scheduledInstance.alarmId} " +
+                    "kind=${scheduledInstance.kind}"
+            )
+            return
+        }
+
+        val reminderId = currentReminderId
+        val alarmId = currentNotificationId
+        val content = currentContent
+        stopRingtoneAndVibration()
+        runCatching { NotificationManagerCompat.from(this).cancel(alarmId) }
+            .onFailure { Log.e(TAG, "自动结束时取消通知失败 alarmId=$alarmId", it) }
+        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+            .onFailure { Log.e(TAG, "自动结束时停止前台状态失败 alarmId=$alarmId", it) }
+        if (reminderId != null && content != null) {
+            runCatching {
+                notificationHelper.showRetainedAlertNotification(
+                    reminderId = reminderId,
+                    alarmId = alarmId,
+                    title = content.title,
+                    previewText = content.previewText
+                )
+            }.onFailure { Log.e(TAG, "自动结束时保留静音通知失败 alarmId=$alarmId", it) }
+        }
+        sendAutoDismissBroadcast(scheduledInstance)
+        clearCurrentAlert()
+        Log.i(
+            TAG,
+            "强提醒已自动结束 alarmId=${scheduledInstance.alarmId} kind=${scheduledInstance.kind}"
+        )
+        stopSelf()
+    }
+
+    private fun sendAutoDismissBroadcast(instance: AlarmAlertInstanceKey) {
+        sendBroadcast(
+            Intent(ACTION_AUTO_DISMISS).apply {
+                setPackage(packageName)
+                putExtra(EXTRA_ALARM_ID, instance.alarmId)
+                putExtra(EXTRA_ALARM_KIND, instance.kind.name)
+                putExtra(EXTRA_ALARM_TIME, instance.occurrenceTime)
+            }
+        )
     }
 
     private fun buildServiceNotification(content: AlarmAlertContent): Notification =
@@ -479,6 +551,7 @@ class AlarmAlertService : Service() {
             Log.w(TAG, "忽略旧提醒的关闭操作 actionAlarmId=$alarmId currentAlarmId=$currentNotificationId")
             return
         }
+        cancelAutoStop()
         stopRingtoneAndVibration()
         runCatching { NotificationManagerCompat.from(this).cancel(alarmId) }
             .onFailure { Log.e(TAG, "取消当前通知失败 alarmId=$alarmId", it) }
@@ -504,6 +577,7 @@ class AlarmAlertService : Service() {
         val reminderId = currentReminderId ?: return
         val content = currentContent ?: return
         val alarmId = currentNotificationId
+        cancelAutoStop()
         stopRingtoneAndVibration()
         runCatching { NotificationManagerCompat.from(this).cancel(alarmId) }
         if (removeForeground) runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
@@ -566,6 +640,7 @@ class AlarmAlertService : Service() {
 
         const val ACTION_START = "com.reminder.local.action.ALARM_ALERT_START"
         const val ACTION_STOP = "com.reminder.local.action.ALARM_ALERT_STOP"
+        const val ACTION_AUTO_DISMISS = "com.reminder.local.action.ALARM_ALERT_AUTO_DISMISS"
         const val EXTRA_REMINDER_ID = "extra_reminder_id"
         const val EXTRA_ALARM_ID = "extra_alarm_id"
         const val EXTRA_TITLE = "extra_title"
