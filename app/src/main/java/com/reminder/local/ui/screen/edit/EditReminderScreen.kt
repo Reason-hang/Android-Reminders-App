@@ -335,6 +335,14 @@ fun EditReminderScreen(
                 Text("震动提醒")
                 Switch(checked = uiState.notifyVibrate, onCheckedChange = viewModel::onNotifyVibrateToggle)
             }
+            if (!uiState.notifySound && !uiState.notifyVibrate) {
+                Text(
+                    "已关闭响铃和震动：本提醒只会显示视觉通知。",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
 
             // 2026-07 迭代修复（问题3）：原来这里还有一个 fillMaxWidth 的"保存"按钮，
             // 和顶部栏的保存按钮功能完全重复，用户必须滚动到表单最底部才能点到。

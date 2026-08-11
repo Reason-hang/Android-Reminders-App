@@ -47,4 +47,18 @@ class AlarmDeliveryPolicyTest {
         assertFalse(decision.fallbackSound)
         assertTrue(decision.fallbackVibration)
     }
+
+    @Test
+    fun silentReminderDoesNotPretendPlaybackStartedOrUseNoisyFallback() {
+        val decision = AlarmDeliveryPolicy.decide(
+            foregroundStarted = true,
+            soundRequested = false,
+            vibrateRequested = false,
+            playback = AlarmPlaybackResult(soundStarted = false, vibrationStarted = false)
+        )
+
+        assertFalse(decision.useFallbackChannel)
+        assertFalse(decision.fallbackSound)
+        assertFalse(decision.fallbackVibration)
+    }
 }

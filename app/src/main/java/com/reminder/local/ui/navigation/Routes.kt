@@ -4,6 +4,7 @@ object Routes {
     const val LIST = "list"
     const val CATEGORY = "category"
     const val SETTINGS = "settings"
+    const val DIAGNOSTICS = "diagnostics"
 
     const val EDIT_ARG_ID = "reminderId"
     const val EDIT_PATTERN = "edit?$EDIT_ARG_ID={$EDIT_ARG_ID}"

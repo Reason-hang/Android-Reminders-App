@@ -38,6 +38,7 @@ import com.reminder.local.util.PermissionUtils
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onDiagnosticsClick: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -194,6 +195,16 @@ fun SettingsScreen(
                     context.startActivity(PermissionUtils.appDetailsSettingsIntent(context))
                 }
             }) { Text("打开自启动管理") }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+
+            Text("诊断与排障", style = MaterialTheme.typography.labelSmall)
+            Text(
+                "查看最近强提醒链路、开启 24 小时增强诊断并主动导出诊断包。",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            TextButton(onClick = onDiagnosticsClick) { Text("打开诊断中心") }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
 

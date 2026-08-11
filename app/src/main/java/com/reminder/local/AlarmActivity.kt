@@ -1,6 +1,5 @@
 package com.reminder.local
 
-import android.app.KeyguardManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -44,6 +43,10 @@ import com.reminder.local.service.AlarmAlertKind
 import com.reminder.local.service.AlarmAlertInstanceKey
 import com.reminder.local.service.AlarmAlertLaunchPolicy
 import com.reminder.local.service.AlarmAlertService
+import com.reminder.local.diagnostics.core.DiagnosticEventName
+import com.reminder.local.diagnostics.core.DiagnosticStage
+import com.reminder.local.diagnostics.core.DiagnosticTraceId
+import com.reminder.local.diagnostics.platform.DiagnosticLogger
 import com.reminder.local.ui.theme.ReminderAppTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Job
@@ -60,6 +63,7 @@ class AlarmActivity : ComponentActivity() {
     @Inject lateinit var reminderRepository: ReminderRepository
     @Inject lateinit var alarmScheduler: AlarmScheduler
     @Inject lateinit var completeReminderUseCase: CompleteReminderUseCase
+    @Inject lateinit var diagnosticLogger: DiagnosticLogger
 
     private val reminderState = mutableStateOf<Reminder?>(null)
     private val alarmTimeState = mutableStateOf<Long?>(null)
@@ -92,6 +96,7 @@ class AlarmActivity : ComponentActivity() {
         Log.d(TAG, "onCreate reminderId=$reminderId")
         alarmTimeState.value = intent.getLongExtra(EXTRA_ALARM_TIME, -1L).takeIf { it > 0L }
         alarmKindState.value = AlarmAlertKind.fromWireValue(intent.getStringExtra(EXTRA_ALARM_KIND))
+        recordActivityEvent(DiagnosticEventName.ACTIVITY_CREATED, captureSnapshot = true)
         actionErrorState.value = null
         loadReminder(reminderId)
         scheduleAutoDismissFallback()
@@ -118,6 +123,7 @@ class AlarmActivity : ComponentActivity() {
         Log.d(TAG, "onNewIntent reminderId=$reminderId")
         alarmTimeState.value = intent.getLongExtra(EXTRA_ALARM_TIME, -1L).takeIf { it > 0L }
         alarmKindState.value = AlarmAlertKind.fromWireValue(intent.getStringExtra(EXTRA_ALARM_KIND))
+        recordActivityEvent(DiagnosticEventName.ACTIVITY_NEW_INTENT, captureSnapshot = true)
         actionErrorState.value = null
         loadReminder(reminderId)
         scheduleAutoDismissFallback()
@@ -130,6 +136,16 @@ class AlarmActivity : ComponentActivity() {
             autoDismissReceiverRegistered = false
         }
         super.onDestroy()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        recordActivityEvent(DiagnosticEventName.ACTIVITY_RESUMED, captureSnapshot = true)
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) recordActivityEvent(DiagnosticEventName.ACTIVITY_FOCUSED)
     }
 
     private fun loadReminder(reminderId: Long) {
@@ -145,12 +161,9 @@ class AlarmActivity : ComponentActivity() {
         setTurnScreenOn(true)
         window.addFlags(
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
         )
-        val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
-        keyguardManager.requestDismissKeyguard(this, null)
     }
 
     private fun registerAutoDismissReceiver() {
@@ -202,6 +215,29 @@ class AlarmActivity : ComponentActivity() {
         finish()
     }
 
+    private fun recordActivityEvent(name: String, captureSnapshot: Boolean = false) {
+        val reminderId = intent.getLongExtra(EXTRA_REMINDER_ID, -1L)
+        val alarmId = intent.getIntExtra(EXTRA_ALARM_ID, Int.MIN_VALUE)
+        val occurrenceTime = intent.getLongExtra(EXTRA_ALARM_TIME, -1L)
+        if (reminderId < 0L || alarmId == Int.MIN_VALUE || occurrenceTime <= 0L) return
+        diagnosticLogger.record(
+            DiagnosticStage.ACTIVITY,
+            name,
+            traceId = DiagnosticTraceId.alert(
+                reminderId,
+                alarmId,
+                AlarmAlertKind.fromWireValue(intent.getStringExtra(EXTRA_ALARM_KIND)).name,
+                occurrenceTime
+            ),
+            details = mapOf(
+                "launchSource" to intent.getStringExtra(EXTRA_LAUNCH_SOURCE).orEmpty().ifBlank {
+                    LAUNCH_SOURCE_UNKNOWN
+                }
+            ),
+            captureSnapshot = captureSnapshot
+        )
+    }
+
     private fun closeAlertOnly() {
         val reminder = reminderState.value
         val reminderId = reminder?.id ?: intent.getLongExtra(EXTRA_REMINDER_ID, -1L)
@@ -216,7 +252,8 @@ class AlarmActivity : ComponentActivity() {
                     title = reminder?.title ?: intent.getStringExtra(EXTRA_TITLE).orEmpty(),
                     note = reminder?.note ?: intent.getStringExtra(EXTRA_NOTE),
                     kind = alarmKindState.value,
-                    occurrenceTime = occurrenceTime
+                    occurrenceTime = occurrenceTime,
+                    source = AlarmAlertService.STOP_SOURCE_ALARM_PAGE_CLOSE
                 )
             )
         } else {
@@ -239,7 +276,11 @@ class AlarmActivity : ComponentActivity() {
                 Log.e(TAG, "稍后提醒调度失败 reminderId=${reminder.id}", it)
             }.isSuccess
             if (scheduled) {
-                stopTargetAlert(reminder, retainNotification = false)
+                stopTargetAlert(
+                    reminder = reminder,
+                    retainNotification = false,
+                    source = AlarmAlertService.STOP_SOURCE_ALARM_PAGE_SNOOZE
+                )
                 finish()
             } else {
                 actionErrorState.value = "稍后提醒设置失败，请重试"
@@ -256,7 +297,11 @@ class AlarmActivity : ComponentActivity() {
                 alarmTimeState.value
             )
             if (success) {
-                stopTargetAlert(reminder, retainNotification = false)
+                stopTargetAlert(
+                    reminder = reminder,
+                    retainNotification = false,
+                    source = AlarmAlertService.STOP_SOURCE_ALARM_PAGE_DONE
+                )
                 finish()
             } else {
                 actionErrorState.value = "标为完成失败，请重试"
@@ -264,7 +309,11 @@ class AlarmActivity : ComponentActivity() {
         }
     }
 
-    private fun stopTargetAlert(reminder: Reminder, retainNotification: Boolean) {
+    private fun stopTargetAlert(
+        reminder: Reminder,
+        retainNotification: Boolean,
+        source: String
+    ) {
         val occurrenceTime = alarmTimeState.value ?: return
         startService(
             AlarmAlertService.stopIntent(
@@ -275,7 +324,8 @@ class AlarmActivity : ComponentActivity() {
                 note = reminder.note,
                 kind = alarmKindState.value,
                 occurrenceTime = occurrenceTime,
-                retainNotification = retainNotification
+                retainNotification = retainNotification,
+                source = source
             )
         )
     }
@@ -288,6 +338,11 @@ class AlarmActivity : ComponentActivity() {
         const val EXTRA_NOTE = "extra_note"
         const val EXTRA_ALARM_TIME = "extra_alarm_time"
         const val EXTRA_ALARM_KIND = "extra_alarm_kind"
+        const val EXTRA_LAUNCH_SOURCE = "extra_launch_source"
+        const val LAUNCH_SOURCE_NOTIFICATION_FULL_SCREEN = "notification_full_screen"
+        const val LAUNCH_SOURCE_ALERT_NOTIFICATION = "alert_notification"
+        const val LAUNCH_SOURCE_ALARM_CLOCK = "alarm_clock"
+        const val LAUNCH_SOURCE_UNKNOWN = "unknown"
     }
 }
 

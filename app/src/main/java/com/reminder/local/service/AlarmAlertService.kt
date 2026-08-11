@@ -19,7 +19,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -27,11 +26,17 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import com.reminder.local.AlarmActivity
 import com.reminder.local.R
 import com.reminder.local.notification.NotificationHelper
 import com.reminder.local.notification.AlarmNotificationPolicy
 import com.reminder.local.receiver.NotificationActionReceiver
+import com.reminder.local.diagnostics.core.DiagnosticEventName
+import com.reminder.local.diagnostics.core.DiagnosticLevel
+import com.reminder.local.diagnostics.core.DiagnosticStage
+import com.reminder.local.diagnostics.core.DiagnosticTraceId
+import com.reminder.local.diagnostics.platform.DiagnosticLogger
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -39,10 +44,10 @@ import javax.inject.Inject
 class AlarmAlertService : Service() {
 
     @Inject lateinit var notificationHelper: NotificationHelper
+    @Inject lateinit var diagnosticLogger: DiagnosticLogger
 
     private var ringtone: Ringtone? = null
     private var vibrator: Vibrator? = null
-    private var wakeLock: PowerManager.WakeLock? = null
     private var currentNotificationId: Int = FALLBACK_NOTIFICATION_ID
     private var currentReminderId: Long? = null
     private var currentContent: AlarmAlertContent? = null
@@ -69,7 +74,15 @@ class AlarmAlertService : Service() {
                 val vibrate = intent.getBooleanExtra(EXTRA_VIBRATE, true)
                 val kind = AlarmAlertKind.fromWireValue(intent.getStringExtra(EXTRA_ALARM_KIND))
                 val incomingInstance = AlarmAlertInstanceKey(alarmId, kind, alarmTime)
+                val traceId = DiagnosticTraceId.alert(reminderId, alarmId, kind.name, alarmTime)
                 val content = AlarmAlertContentFormatter.format(title, note, kind)
+                diagnosticLogger.record(
+                    DiagnosticStage.FOREGROUND_SERVICE,
+                    DiagnosticEventName.ALERT_SESSION_STARTED,
+                    traceId = traceId,
+                    details = mapOf("kind" to kind.name, "soundRequested" to sound, "vibrateRequested" to vibrate),
+                    captureSnapshot = true
+                )
                 val activeAlarmId = currentReminderId?.let { currentNotificationId }
                 if (
                     AlarmAlertConcurrencyPolicy.shouldRetainCurrent(
@@ -77,6 +90,25 @@ class AlarmAlertService : Service() {
                         alarmId
                     )
                 ) {
+                    currentInstance?.let { previousInstance ->
+                        diagnosticLogger.record(
+                            DiagnosticStage.FOREGROUND_SERVICE,
+                            DiagnosticEventName.ALERT_PREEMPTED,
+                            traceId = DiagnosticTraceId.alert(
+                                currentReminderId ?: -1L,
+                                previousInstance.alarmId,
+                                previousInstance.kind.name,
+                                previousInstance.occurrenceTime
+                            ),
+                            outcome = "replaced_by_new_alert",
+                            details = mapOf(
+                                "nextAlarmId" to alarmId,
+                                "nextKind" to kind.name,
+                                "nextOccurrenceTime" to alarmTime
+                            ),
+                            captureSnapshot = true
+                        )
+                    }
                     runCatching { retainCurrentAlert(removeForeground = false) }
                         .onFailure { Log.e(TAG, "保留上一条提醒失败，继续投递新提醒", it) }
                 } else if (AlarmAlertConcurrencyPolicy.shouldRestartPlayback(activeAlarmId)) {
@@ -97,23 +129,43 @@ class AlarmAlertService : Service() {
                     Log.e(TAG, "startForeground 失败，alarmId=$alarmId kind=$kind", it)
                     false
                 }
+                diagnosticLogger.record(
+                    DiagnosticStage.FOREGROUND_SERVICE,
+                    if (foregroundStarted) DiagnosticEventName.FOREGROUND_SERVICE_STARTED else DiagnosticEventName.FOREGROUND_SERVICE_FAILED,
+                    traceId = traceId,
+                    level = if (foregroundStarted) DiagnosticLevel.INFO else DiagnosticLevel.ERROR,
+                    outcome = if (foregroundStarted) "ok" else "start_foreground_failed",
+                    captureSnapshot = true
+                )
 
-                val activityIntent = alarmActivityIntent(
+                val fullScreenActivityIntent = alarmActivityIntent(
                     reminderId = reminderId,
                     alarmId = alarmId,
                     title = title,
                     note = note,
                     alarmTime = alarmTime,
-                    kind = kind
+                    kind = kind,
+                    launchSource = AlarmActivity.LAUNCH_SOURCE_NOTIFICATION_FULL_SCREEN
                 )
-                val activityPendingIntent = runCatching {
-                    activityPendingIntent(alarmId, activityIntent)
+                val fullScreenPendingIntent = runCatching {
+                    activityPendingIntent(alarmId, fullScreenActivityIntent)
                 }.onFailure {
                     Log.e(TAG, "创建全屏 PendingIntent 失败，继续声音/震动/通知链路", it)
                 }.getOrNull()
-
-                runCatching { wakeScreen() }
-                    .onFailure { Log.e(TAG, "wakeScreen 失败，alarmId=$alarmId", it) }
+                val contentActivityIntent = alarmActivityIntent(
+                    reminderId = reminderId,
+                    alarmId = alarmId,
+                    title = title,
+                    note = note,
+                    alarmTime = alarmTime,
+                    kind = kind,
+                    launchSource = AlarmActivity.LAUNCH_SOURCE_ALERT_NOTIFICATION
+                )
+                val contentPendingIntent = runCatching {
+                    activityPendingIntent(alarmId xor 0x20000000, contentActivityIntent)
+                }.onFailure {
+                    Log.e(TAG, "创建通知点击 PendingIntent 失败，继续全屏通知链路", it)
+                }.getOrNull()
 
                 val playback = if (foregroundStarted) {
                     runCatching { startAlert(sound, vibrate) }
@@ -127,6 +179,22 @@ class AlarmAlertService : Service() {
                 } else {
                     AlarmPlaybackResult(soundStarted = false, vibrationStarted = false)
                 }
+                diagnosticLogger.record(
+                    DiagnosticStage.PLAYBACK,
+                    DiagnosticEventName.PLAYBACK_STARTED,
+                    traceId = traceId,
+                    outcome = when {
+                        playback.soundStarted || playback.vibrationStarted -> "started"
+                        !sound && !vibrate -> "not_requested"
+                        else -> "not_started"
+                    },
+                    details = mapOf(
+                        "soundRequested" to sound,
+                        "vibrateRequested" to vibrate,
+                        "soundStarted" to playback.soundStarted,
+                        "vibrationStarted" to playback.vibrationStarted
+                    )
+                )
                 val delivery = AlarmDeliveryPolicy.decide(
                     foregroundStarted = foregroundStarted,
                     soundRequested = sound,
@@ -142,14 +210,21 @@ class AlarmAlertService : Service() {
                     NotificationHelper.CHANNEL_FULLSCREEN_ALERT
                 }
 
-                runCatching {
+                diagnosticLogger.record(
+                    DiagnosticStage.NOTIFICATION,
+                    DiagnosticEventName.ALERT_NOTIFICATION_REQUESTED,
+                    traceId = traceId,
+                    details = mapOf("channel" to alertChannelId)
+                )
+                val notificationPosted = runCatching {
                     postAlertNotification(
                         alarmId,
                         buildAlertNotification(
                             reminderId = reminderId,
                             alarmId = alarmId,
                             content = content,
-                            activityPendingIntent = activityPendingIntent,
+                            contentPendingIntent = contentPendingIntent,
+                            fullScreenPendingIntent = fullScreenPendingIntent,
                             kind = kind,
                             occurrenceTime = alarmTime,
                             channelId = alertChannelId
@@ -157,12 +232,38 @@ class AlarmAlertService : Service() {
                     )
                 }.onFailure {
                     Log.e(TAG, "发布用户强提醒通知失败，alarmId=$alarmId kind=$kind", it)
-                }
+                }.getOrDefault(false)
+                diagnosticLogger.record(
+                    DiagnosticStage.NOTIFICATION,
+                    DiagnosticEventName.ALERT_NOTIFICATION_POSTED,
+                    traceId = traceId,
+                    level = if (notificationPosted) DiagnosticLevel.INFO else DiagnosticLevel.ERROR,
+                    outcome = if (notificationPosted) "requested" else "failed",
+                    details = mapOf("channel" to alertChannelId),
+                    captureSnapshot = true
+                )
 
-                if (activityPendingIntent != null) {
-                    runCatching { launchAlarmActivity(activityPendingIntent) }
-                        .onFailure { Log.e(TAG, "launchAlarmActivity 失败，alarmId=$alarmId", it) }
-                }
+                diagnosticLogger.record(
+                    DiagnosticStage.FULL_SCREEN,
+                    if (notificationPosted && fullScreenPendingIntent != null) {
+                        DiagnosticEventName.FULL_SCREEN_REQUESTED
+                    } else {
+                        DiagnosticEventName.FULL_SCREEN_REQUEST_FAILED
+                    },
+                    traceId = traceId,
+                    level = if (notificationPosted && fullScreenPendingIntent != null) {
+                        DiagnosticLevel.INFO
+                    } else {
+                        DiagnosticLevel.ERROR
+                    },
+                    outcome = if (notificationPosted && fullScreenPendingIntent != null) {
+                        "notification_manager_delivery"
+                    } else {
+                        "notification_or_pending_intent_failed"
+                    },
+                    details = mapOf("route" to "notification_full_screen"),
+                    captureSnapshot = true
+                )
 
                 Log.i(
                     TAG,
@@ -195,6 +296,12 @@ class AlarmAlertService : Service() {
         autoStopRunnable = runnable
         mainHandler.postDelayed(runnable, AlarmAlertLaunchPolicy.ALERT_AUTO_STOP_TIMEOUT_MILLIS)
         Log.d(TAG, "已安排强提醒自动结束 alarmId=${instance.alarmId} kind=${instance.kind}")
+        diagnosticLogger.record(
+            DiagnosticStage.TIMER,
+            DiagnosticEventName.TIMER_SCHEDULED,
+            traceId = traceFor(instance),
+            details = mapOf("timeoutMillis" to AlarmAlertLaunchPolicy.ALERT_AUTO_STOP_TIMEOUT_MILLIS)
+        )
     }
 
     private fun cancelAutoStop() {
@@ -214,6 +321,12 @@ class AlarmAlertService : Service() {
                 "忽略旧提醒的自动结束 alarmId=${scheduledInstance.alarmId} " +
                     "kind=${scheduledInstance.kind}"
             )
+            diagnosticLogger.record(
+                DiagnosticStage.TIMER,
+                DiagnosticEventName.TIMER_STALE_IGNORED,
+                traceId = traceFor(scheduledInstance),
+                level = DiagnosticLevel.WARN
+            )
             return
         }
 
@@ -221,6 +334,12 @@ class AlarmAlertService : Service() {
         val alarmId = currentNotificationId
         val content = currentContent
         stopRingtoneAndVibration()
+        diagnosticLogger.record(
+            DiagnosticStage.TIMER,
+            DiagnosticEventName.TIMER_EXPIRED,
+            traceId = traceFor(scheduledInstance),
+            captureSnapshot = true
+        )
         runCatching { NotificationManagerCompat.from(this).cancel(alarmId) }
             .onFailure { Log.e(TAG, "自动结束时取消通知失败 alarmId=$alarmId", it) }
         runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
@@ -271,7 +390,8 @@ class AlarmAlertService : Service() {
         reminderId: Long,
         alarmId: Int,
         content: AlarmAlertContent,
-        activityPendingIntent: PendingIntent?,
+        contentPendingIntent: PendingIntent?,
+        fullScreenPendingIntent: PendingIntent?,
         kind: AlarmAlertKind,
         occurrenceTime: Long,
         channelId: String
@@ -288,11 +408,36 @@ class AlarmAlertService : Service() {
             putExtra(EXTRA_ALARM_KIND, kind.name)
             putExtra(EXTRA_ALARM_TIME, occurrenceTime)
             putExtra(EXTRA_RETAIN_NOTIFICATION, true)
+            putExtra(EXTRA_STOP_SOURCE, STOP_SOURCE_NOTIFICATION_CLOSE_ACTION)
         }
         val closePendingIntent = PendingIntent.getService(
             this,
             alarmId xor 0x10000000,
             closeIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val dismissedIntent = Intent(this, AlarmAlertService::class.java).apply {
+            action = ACTION_STOP
+            data = AlarmIntentIdentity.action(
+                reminderId,
+                alarmId,
+                kind,
+                occurrenceTime,
+                "dismiss"
+            ).toUri()
+            putExtra(EXTRA_REMINDER_ID, reminderId)
+            putExtra(EXTRA_ALARM_ID, alarmId)
+            putExtra(EXTRA_TITLE, content.title)
+            putExtra(EXTRA_NOTE, content.previewText)
+            putExtra(EXTRA_ALARM_KIND, kind.name)
+            putExtra(EXTRA_ALARM_TIME, occurrenceTime)
+            putExtra(EXTRA_RETAIN_NOTIFICATION, true)
+            putExtra(EXTRA_STOP_SOURCE, STOP_SOURCE_NOTIFICATION_DISMISSED)
+        }
+        val dismissedPendingIntent = PendingIntent.getService(
+            this,
+            alarmId xor 0x11000000,
+            dismissedIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -340,8 +485,8 @@ class AlarmAlertService : Service() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setShowWhen(true)
             .setWhen(System.currentTimeMillis())
-        if (activityPendingIntent != null) {
-            publicPreviewBuilder.setContentIntent(activityPendingIntent)
+        if (contentPendingIntent != null) {
+            publicPreviewBuilder.setContentIntent(contentPendingIntent)
         }
         val publicPreview = publicPreviewBuilder.build()
 
@@ -358,15 +503,16 @@ class AlarmAlertService : Service() {
             .setWhen(System.currentTimeMillis())
             .setOngoing(false)
             .setAutoCancel(false)
-            .setDeleteIntent(closePendingIntent)
+            .setDeleteIntent(dismissedPendingIntent)
             .setPublicVersion(publicPreview)
             .addAction(0, "关闭", closePendingIntent)
             .addAction(0, getString(R.string.action_snooze), snoozePendingIntent)
             .addAction(0, getString(R.string.action_mark_done), markDonePendingIntent)
-        if (activityPendingIntent != null) {
-            builder
-                .setContentIntent(activityPendingIntent)
-                .setFullScreenIntent(activityPendingIntent, true)
+        if (contentPendingIntent != null) {
+            builder.setContentIntent(contentPendingIntent)
+        }
+        if (fullScreenPendingIntent != null) {
+            builder.setFullScreenIntent(fullScreenPendingIntent, true)
         }
         return builder.build()
     }
@@ -377,7 +523,8 @@ class AlarmAlertService : Service() {
         title: String,
         note: String?,
         alarmTime: Long,
-        kind: AlarmAlertKind
+        kind: AlarmAlertKind,
+        launchSource: String
     ): Intent =
         Intent(this, AlarmActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -388,6 +535,7 @@ class AlarmAlertService : Service() {
             putExtra(AlarmActivity.EXTRA_NOTE, note)
             putExtra(AlarmActivity.EXTRA_ALARM_TIME, alarmTime)
             putExtra(AlarmActivity.EXTRA_ALARM_KIND, kind.name)
+            putExtra(AlarmActivity.EXTRA_LAUNCH_SOURCE, launchSource)
         }
 
     private fun activityPendingIntent(requestCode: Int, intent: Intent): PendingIntent {
@@ -404,19 +552,6 @@ class AlarmAlertService : Service() {
         }
     }
 
-    private fun launchAlarmActivity(activityPendingIntent: PendingIntent) {
-        activityPendingIntent.send(
-            this,
-            0,
-            null,
-            null,
-            null,
-            null,
-            senderBackgroundActivityLaunchOptions()
-        )
-        Log.d(TAG, "已请求启动全屏提醒页；若系统拦截需检查 ActivityTaskManager 的 BAL 日志")
-    }
-
     private fun creatorBackgroundActivityLaunchOptions(): Bundle? =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             ActivityOptions.makeBasic().apply {
@@ -427,45 +562,16 @@ class AlarmAlertService : Service() {
             null
         }
 
-    private fun senderBackgroundActivityLaunchOptions(): Bundle? =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            ActivityOptions.makeBasic().apply {
-                setPendingIntentBackgroundActivityStartMode(
-                    backgroundActivityStartMode()
-                )
-            }.toBundle()
-        } else {
-            null
-        }
-
-    @SuppressLint("WakelockTimeout")
-    @Suppress("DEPRECATION")
-    private fun wakeScreen() {
-        val existingWakeLock = wakeLock
-        if (existingWakeLock?.isHeld == true) return
-
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(
-            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
-                PowerManager.ACQUIRE_CAUSES_WAKEUP or
-                PowerManager.ON_AFTER_RELEASE,
-            "ReminderLocal:AlarmAlert"
-        ).apply {
-            setReferenceCounted(false)
-            acquire(AlarmAlertLaunchPolicy.WAKE_SCREEN_TIMEOUT_MILLIS)
-        }
-    }
-
     private fun startAlert(sound: Boolean, vibrate: Boolean): AlarmPlaybackResult {
         val soundStarted = if (!sound) {
-            true
+            false
         } else {
             runCatching { startRingtone() }
                 .onFailure { Log.e(TAG, "手动响铃启动失败", it) }
                 .getOrDefault(false)
         }
         val vibrationStarted = if (!vibrate) {
-            true
+            false
         } else {
             runCatching { startVibration() }
                 .onFailure { Log.e(TAG, "手动震动启动失败", it) }
@@ -542,6 +648,9 @@ class AlarmAlertService : Service() {
         val kind = AlarmAlertKind.fromWireValue(intent.getStringExtra(EXTRA_ALARM_KIND))
         val occurrenceTime = intent.getLongExtra(EXTRA_ALARM_TIME, -1L)
         val actionInstance = AlarmAlertInstanceKey(alarmId, kind, occurrenceTime)
+        val stopSource = intent.getStringExtra(EXTRA_STOP_SOURCE).orEmpty().ifBlank {
+            STOP_SOURCE_UNKNOWN
+        }
         if (
             !AlarmAlertConcurrencyPolicy.actionTargetsCurrent(
                 currentInstance,
@@ -570,6 +679,12 @@ class AlarmAlertService : Service() {
             ) }.onFailure { Log.e(TAG, "保留已关闭通知失败 alarmId=$alarmId", it) }
         }
         clearCurrentAlert()
+        diagnosticLogger.record(
+            DiagnosticStage.USER_ACTION,
+            DiagnosticEventName.ALERT_CLOSED,
+            traceId = DiagnosticTraceId.alert(reminderId, alarmId, kind.name, occurrenceTime),
+            details = mapOf("source" to stopSource)
+        )
         stopSelf()
     }
 
@@ -597,6 +712,13 @@ class AlarmAlertService : Service() {
         currentNotificationId = FALLBACK_NOTIFICATION_ID
     }
 
+    private fun traceFor(instance: AlarmAlertInstanceKey): String = DiagnosticTraceId.alert(
+        currentReminderId ?: -1L,
+        instance.alarmId,
+        instance.kind.name,
+        instance.occurrenceTime
+    )
+
     private fun backgroundActivityStartMode(): Int =
         if (Build.VERSION.SDK_INT >= 36) {
             ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOW_ALWAYS
@@ -605,16 +727,17 @@ class AlarmAlertService : Service() {
         }
 
     @SuppressLint("MissingPermission")
-    private fun postAlertNotification(notificationId: Int, notification: Notification) {
+    private fun postAlertNotification(notificationId: Int, notification: Notification): Boolean {
         if (
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
         ) {
             Log.e(TAG, "通知权限未授权，无法发布锁屏强提醒 notificationId=$notificationId")
-            return
+            return false
         }
         NotificationManagerCompat.from(this).notify(notificationId, notification)
+        return true
     }
 
     private fun stopRingtoneAndVibration() {
@@ -626,13 +749,6 @@ class AlarmAlertService : Service() {
         vibrator = null
         runCatching { activeVibrator?.cancel() }
             .onFailure { Log.e(TAG, "停止震动失败", it) }
-        runCatching { releaseWakeLock() }
-            .onFailure { Log.e(TAG, "释放 WakeLock 失败", it) }
-    }
-
-    private fun releaseWakeLock() {
-        wakeLock?.takeIf { it.isHeld }?.release()
-        wakeLock = null
     }
 
     companion object {
@@ -650,6 +766,16 @@ class AlarmAlertService : Service() {
         const val EXTRA_VIBRATE = "extra_vibrate"
         const val EXTRA_ALARM_KIND = "extra_alarm_kind"
         const val EXTRA_RETAIN_NOTIFICATION = "extra_retain_notification"
+        const val EXTRA_STOP_SOURCE = "extra_stop_source"
+
+        const val STOP_SOURCE_UNKNOWN = "unknown"
+        const val STOP_SOURCE_ALARM_PAGE_CLOSE = "alarm_page_close"
+        const val STOP_SOURCE_ALARM_PAGE_SNOOZE = "alarm_page_snooze"
+        const val STOP_SOURCE_ALARM_PAGE_DONE = "alarm_page_done"
+        const val STOP_SOURCE_NOTIFICATION_CLOSE_ACTION = "notification_close_action"
+        const val STOP_SOURCE_NOTIFICATION_DISMISSED = "notification_dismissed"
+        const val STOP_SOURCE_NOTIFICATION_ACTION_SNOOZE = "notification_action_snooze"
+        const val STOP_SOURCE_NOTIFICATION_ACTION_DONE = "notification_action_done"
 
         private const val FALLBACK_NOTIFICATION_ID = 4001
 
@@ -684,7 +810,8 @@ class AlarmAlertService : Service() {
             note: String?,
             kind: AlarmAlertKind,
             occurrenceTime: Long,
-            retainNotification: Boolean = true
+            retainNotification: Boolean = true,
+            source: String = STOP_SOURCE_UNKNOWN
         ): Intent =
             Intent(context, AlarmAlertService::class.java).apply {
                 action = ACTION_STOP
@@ -696,6 +823,7 @@ class AlarmAlertService : Service() {
                 putExtra(EXTRA_ALARM_KIND, kind.name)
                 putExtra(EXTRA_ALARM_TIME, occurrenceTime)
                 putExtra(EXTRA_RETAIN_NOTIFICATION, retainNotification)
+                putExtra(EXTRA_STOP_SOURCE, source)
             }
     }
 }

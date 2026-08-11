@@ -12,6 +12,7 @@ import com.reminder.local.ui.screen.category.CategoryScreen
 import com.reminder.local.ui.screen.edit.EditReminderScreen
 import com.reminder.local.ui.screen.list.ReminderListScreen
 import com.reminder.local.ui.screen.settings.SettingsScreen
+import com.reminder.local.ui.screen.diagnostics.DiagnosticsScreen
 
 @Composable
 fun AppNavGraph(
@@ -54,7 +55,14 @@ fun AppNavGraph(
         }
 
         composable(Routes.SETTINGS) {
-            SettingsScreen(onBack = { navController.popBackStack() })
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onDiagnosticsClick = { navController.navigate(Routes.DIAGNOSTICS) }
+            )
+        }
+
+        composable(Routes.DIAGNOSTICS) {
+            DiagnosticsScreen(onBack = { navController.popBackStack() })
         }
     }
 }

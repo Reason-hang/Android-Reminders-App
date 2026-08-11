@@ -13,6 +13,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import com.reminder.local.AlarmActivity
 import com.reminder.local.R
 import com.reminder.local.data.repository.ReminderRepository
@@ -27,6 +28,11 @@ import com.reminder.local.notification.AlarmNotificationPolicy
 import com.reminder.local.service.AlarmAlertKind
 import com.reminder.local.service.AlarmAlertService
 import com.reminder.local.service.AlarmIntentIdentity
+import com.reminder.local.diagnostics.core.DiagnosticEventName
+import com.reminder.local.diagnostics.core.DiagnosticLevel
+import com.reminder.local.diagnostics.core.DiagnosticStage
+import com.reminder.local.diagnostics.core.DiagnosticTraceId
+import com.reminder.local.diagnostics.platform.DiagnosticLogger
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -45,6 +51,7 @@ class AlarmReceiver : BroadcastReceiver() {
 
     @Inject lateinit var repository: ReminderRepository
     @Inject lateinit var alarmScheduler: AlarmScheduler
+    @Inject lateinit var diagnosticLogger: DiagnosticLogger
 
     override fun onReceive(context: Context, intent: Intent) {
         val reminderId = intent.getLongExtra(EXTRA_REMINDER_ID, -1L)
@@ -63,6 +70,20 @@ class AlarmReceiver : BroadcastReceiver() {
                         "kind=$alarmKind (为空说明数据库里已经查不到这条提醒，不会有任何提醒动作)"
                 )
                 if (reminder != null && reminder.status == ReminderStatus.PENDING) {
+                    val instanceTime = occurrenceTime.takeIf { it > 0L } ?: reminder.effectiveTime
+                    val traceId = DiagnosticTraceId.alert(
+                        reminder.id,
+                        reminder.alarmId,
+                        alarmKind,
+                        instanceTime
+                    )
+                    diagnosticLogger.record(
+                        DiagnosticStage.RECEIVER,
+                        DiagnosticEventName.RECEIVER_ENTERED,
+                        traceId = traceId,
+                        details = mapOf("kind" to alarmKind, "occurrenceTime" to instanceTime),
+                        captureSnapshot = true
+                    )
                     if (
                         alarmKind != KIND_SNOOZE &&
                         occurrenceTime > 0L &&
@@ -73,9 +94,23 @@ class AlarmReceiver : BroadcastReceiver() {
                             "忽略已失效的闹钟实例 reminderId=$reminderId kind=$alarmKind " +
                                 "occurrence=$occurrenceTime current=${reminder.effectiveTime}"
                         )
+                        diagnosticLogger.record(
+                            DiagnosticStage.RECEIVER,
+                            DiagnosticEventName.RECEIVER_STALE,
+                            traceId = traceId,
+                            level = DiagnosticLevel.WARN,
+                            outcome = "occurrence_mismatch",
+                            details = mapOf("kind" to alarmKind, "currentEffectiveTime" to reminder.effectiveTime)
+                        )
                         return@launch
                     }
                     if (AlarmTriggerPolicy.shouldStartStrongAlert(alarmKind)) {
+                        diagnosticLogger.record(
+                            DiagnosticStage.FOREGROUND_SERVICE,
+                            DiagnosticEventName.FOREGROUND_SERVICE_REQUESTED,
+                            traceId = traceId,
+                            details = mapOf("kind" to alarmKind)
+                        )
                         val started = runCatching {
                             ContextCompat.startForegroundService(
                                 context,
@@ -104,6 +139,14 @@ class AlarmReceiver : BroadcastReceiver() {
                             // 保证用户至少能在通知栏/锁屏看到内容、点开能进入提醒详情，
                             // 而不是彻底没有任何反应。
                             Log.e(TAG, "startForegroundService 失败，降级为普通通知 reminderId=${reminder.id}", error)
+                            diagnosticLogger.record(
+                                DiagnosticStage.FOREGROUND_SERVICE,
+                                DiagnosticEventName.FOREGROUND_SERVICE_FAILED,
+                                traceId = traceId,
+                                level = DiagnosticLevel.ERROR,
+                                outcome = error.javaClass.simpleName,
+                                captureSnapshot = true
+                            )
                             postFallbackNotification(context, reminder, alarmKind, occurrenceTime)
                         }
                     }
@@ -181,7 +224,7 @@ class AlarmReceiver : BroadcastReceiver() {
             KIND_SNOOZE -> AlarmAlertKind.SNOOZE
             else -> AlarmAlertKind.DUE
         }
-        val activityIntent = Intent(context, AlarmActivity::class.java).apply {
+        fun activityIntent(launchSource: String) = Intent(context, AlarmActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             data = Uri.parse(AlarmIntentIdentity.alert(reminder.id, kind))
             putExtra(AlarmActivity.EXTRA_REMINDER_ID, reminder.id)
@@ -193,13 +236,23 @@ class AlarmReceiver : BroadcastReceiver() {
                 occurrenceTime.takeIf { it > 0L } ?: reminder.effectiveTime
             )
             putExtra(AlarmActivity.EXTRA_ALARM_KIND, kind.name)
+            putExtra(AlarmActivity.EXTRA_LAUNCH_SOURCE, launchSource)
         }
         val requestCode = if (alarmKind == KIND_ADVANCE) {
             AlarmSchedulerImpl.advanceAlarmRequestCode(reminder.alarmId)
         } else {
             reminder.alarmId
         }
-        val contentPendingIntent = activityPendingIntent(context, requestCode, activityIntent)
+        val fullScreenPendingIntent = activityPendingIntent(
+            context,
+            requestCode,
+            activityIntent(AlarmActivity.LAUNCH_SOURCE_NOTIFICATION_FULL_SCREEN)
+        )
+        val contentPendingIntent = activityPendingIntent(
+            context,
+            requestCode xor 0x20000000,
+            activityIntent(AlarmActivity.LAUNCH_SOURCE_ALERT_NOTIFICATION)
+        )
         val titlePrefix = when (alarmKind) {
             KIND_ADVANCE -> "提前提醒："
             KIND_SNOOZE -> "稍后提醒："
@@ -216,7 +269,8 @@ class AlarmReceiver : BroadcastReceiver() {
             note = reminder.note,
             kind = kind,
             occurrenceTime = instanceTime,
-            retainNotification = true
+            retainNotification = true,
+            source = AlarmAlertService.STOP_SOURCE_NOTIFICATION_CLOSE_ACTION
         ).apply {
             data = Uri.parse(
                 AlarmIntentIdentity.action(reminder.id, reminder.alarmId, kind, instanceTime, "close")
@@ -226,6 +280,31 @@ class AlarmReceiver : BroadcastReceiver() {
             context,
             reminder.alarmId xor 0x10000000,
             closeIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val dismissedIntent = AlarmAlertService.stopIntent(
+            context = context,
+            reminderId = reminder.id,
+            alarmId = reminder.alarmId,
+            title = reminder.title,
+            note = reminder.note,
+            kind = kind,
+            occurrenceTime = instanceTime,
+            retainNotification = true,
+            source = AlarmAlertService.STOP_SOURCE_NOTIFICATION_DISMISSED
+        ).apply {
+            data = AlarmIntentIdentity.action(
+                reminder.id,
+                reminder.alarmId,
+                kind,
+                instanceTime,
+                "dismiss"
+            ).toUri()
+        }
+        val dismissedPendingIntent = PendingIntent.getService(
+            context,
+            reminder.alarmId xor 0x11000000,
+            dismissedIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         fun actionPendingIntent(action: String, requestCodeOffset: Int): PendingIntent {
@@ -289,10 +368,10 @@ class AlarmReceiver : BroadcastReceiver() {
             .setWhen(System.currentTimeMillis())
             .setAutoCancel(false)
             .setOngoing(false)
-            .setDeleteIntent(closePendingIntent)
+            .setDeleteIntent(dismissedPendingIntent)
             .setPublicVersion(publicPreview)
             .setContentIntent(contentPendingIntent)
-            .setFullScreenIntent(contentPendingIntent, true)
+            .setFullScreenIntent(fullScreenPendingIntent, true)
             .addAction(0, "关闭", closePendingIntent)
             .addAction(0, context.getString(R.string.action_snooze), snoozePendingIntent)
             .addAction(0, context.getString(R.string.action_mark_done), donePendingIntent)
@@ -301,19 +380,6 @@ class AlarmReceiver : BroadcastReceiver() {
             NotificationManagerCompat.from(context).notify(reminder.alarmId, notification)
         }.onFailure {
             Log.e(TAG, "备用强提醒通知发布失败 reminderId=${reminder.id} kind=$alarmKind", it)
-        }
-        runCatching {
-            contentPendingIntent.send(
-                context,
-                0,
-                null,
-                null,
-                null,
-                null,
-                senderBackgroundActivityLaunchOptions()
-            )
-        }.onFailure {
-            Log.e(TAG, "备用全屏提醒页启动失败 reminderId=${reminder.id} kind=$alarmKind", it)
         }
         Log.i(
             TAG,
@@ -344,15 +410,6 @@ class AlarmReceiver : BroadcastReceiver() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             ActivityOptions.makeBasic().apply {
                 pendingIntentCreatorBackgroundActivityStartMode = backgroundActivityStartMode()
-            }.toBundle()
-        } else {
-            null
-        }
-
-    private fun senderBackgroundActivityLaunchOptions(): Bundle? =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            ActivityOptions.makeBasic().apply {
-                setPendingIntentBackgroundActivityStartMode(backgroundActivityStartMode())
             }.toBundle()
         } else {
             null

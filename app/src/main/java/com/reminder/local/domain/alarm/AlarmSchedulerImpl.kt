@@ -16,6 +16,11 @@ import com.reminder.local.domain.usecase.AdvanceReminderCalculator
 import com.reminder.local.receiver.AlarmReceiver
 import com.reminder.local.service.AlarmAlertKind
 import com.reminder.local.service.AlarmIntentIdentity
+import com.reminder.local.diagnostics.core.DiagnosticEventName
+import com.reminder.local.diagnostics.core.DiagnosticLevel
+import com.reminder.local.diagnostics.core.DiagnosticStage
+import com.reminder.local.diagnostics.core.DiagnosticTraceId
+import com.reminder.local.diagnostics.platform.DiagnosticLogger
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -29,7 +34,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class AlarmSchedulerImpl @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val diagnosticLogger: DiagnosticLogger
 ) : AlarmScheduler {
 
     private val alarmManager: AlarmManager
@@ -92,10 +98,30 @@ class AlarmSchedulerImpl @Inject constructor(
     private fun scheduleOne(reminder: Reminder, triggerAt: Long, kind: String, requestCode: Int) {
         val operation = buildOperationPendingIntent(reminder, kind, requestCode, reminder.effectiveTime)
         val showIntent = buildShowPendingIntent(reminder, kind)
-        alarmManager.setAlarmClock(
-            AlarmManager.AlarmClockInfo(triggerAt, showIntent),
-            operation
-        )
+        val traceId = DiagnosticTraceId.alert(reminder.id, reminder.alarmId, kind, reminder.effectiveTime)
+        runCatching {
+            alarmManager.setAlarmClock(
+                AlarmManager.AlarmClockInfo(triggerAt, showIntent),
+                operation
+            )
+        }.onSuccess {
+            diagnosticLogger.record(
+                DiagnosticStage.SCHEDULER,
+                DiagnosticEventName.ALARM_SCHEDULED,
+                traceId = traceId,
+                details = mapOf("kind" to kind, "triggerAt" to triggerAt, "requestCode" to requestCode)
+            )
+        }.onFailure { error ->
+            diagnosticLogger.record(
+                DiagnosticStage.SCHEDULER,
+                DiagnosticEventName.ALARM_SCHEDULE_FAILED,
+                traceId = traceId,
+                level = DiagnosticLevel.ERROR,
+                outcome = error.javaClass.simpleName,
+                details = mapOf("kind" to kind, "triggerAt" to triggerAt)
+            )
+            throw error
+        }
         Log.i(
             TAG,
             "闹钟已注册 reminderId=${reminder.id} alarmId=${reminder.alarmId} " +
@@ -196,6 +222,7 @@ class AlarmSchedulerImpl @Inject constructor(
                     else -> AlarmAlertKind.DUE.name
                 }
             )
+            putExtra(AlarmActivity.EXTRA_LAUNCH_SOURCE, AlarmActivity.LAUNCH_SOURCE_ALARM_CLOCK)
         }
         val requestCode = showActivityRequestCode(reminder.alarmId, kind)
         val options = creatorBackgroundActivityLaunchOptions()

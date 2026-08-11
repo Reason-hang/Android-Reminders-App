@@ -47,7 +47,14 @@ class NotificationActionReceiver : BroadcastReceiver() {
                             occurrenceTime.takeIf { it > 0L }
                         )
                         if (success) {
-                            stopTargetAlert(context, reminder, alarmId, kind, occurrenceTime)
+                            stopTargetAlert(
+                                context,
+                                reminder,
+                                alarmId,
+                                kind,
+                                occurrenceTime,
+                                AlarmAlertService.STOP_SOURCE_NOTIFICATION_ACTION_DONE
+                            )
                         } else {
                             Log.e(TAG, "通知栏完成操作失败 reminderId=${reminder.id}")
                         }
@@ -59,7 +66,14 @@ class NotificationActionReceiver : BroadcastReceiver() {
                             Log.e(TAG, "稍后提醒调度失败 reminderId=${reminder.id}", it)
                         }.isSuccess
                         if (scheduled) {
-                            stopTargetAlert(context, reminder, alarmId, kind, occurrenceTime)
+                            stopTargetAlert(
+                                context,
+                                reminder,
+                                alarmId,
+                                kind,
+                                occurrenceTime,
+                                AlarmAlertService.STOP_SOURCE_NOTIFICATION_ACTION_SNOOZE
+                            )
                         }
                     }
                 }
@@ -76,7 +90,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
         reminder: com.reminder.local.domain.model.Reminder,
         alarmId: Int,
         kind: com.reminder.local.service.AlarmAlertKind,
-        occurrenceTime: Long
+        occurrenceTime: Long,
+        source: String
     ) {
         if (alarmId == Int.MIN_VALUE || occurrenceTime <= 0L) return
         runCatching {
@@ -89,7 +104,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
                     note = reminder.note,
                     kind = kind,
                     occurrenceTime = occurrenceTime,
-                    retainNotification = false
+                    retainNotification = false,
+                    source = source
                 )
             )
         }.onFailure { Log.e(TAG, "停止目标强提醒失败 reminderId=${reminder.id}", it) }

@@ -1,7 +1,7 @@
 # APK 构建与交付
 
-> 状态：v1.7 当前构建记录
-> 构建日期：2026-08-10
+> 状态：v1.10 当前构建记录
+> 构建日期：2026-08-11
 
 ## 目录
 
@@ -13,17 +13,15 @@
 
 | 项目 | 结果 |
 |---|---|
-| 对外交付名 | `ReminderApp-v1.7.apk` |
+| 构建产物 | `app/build/outputs/apk/release/app-release.apk`（对外交付文件为 `outputs/ReminderApp-v1.10.apk`） |
 | 包名 | `com.reminder.local` |
-| 版本 | `1.7 (8)` |
+| 版本 | `1.10 (11)` |
 | minSdk / targetSdk | 31 / 36 |
-| 文件大小 | 48,434,617 bytes |
-| 签名 | APK Signature Scheme v2，Android Debug 证书 |
-| 证书 SHA-256 | `75f7f5d3d941a646abdd9c981afedbdba6215a8e0533a94dfebd3d950fee2b1c` |
-| APK SHA-256 | `3ed7146d91c10ecccac4398e63deebba14e36d5014d94ccffb4003b70fb81aa6` |
-| 网络权限 | 未声明 `INTERNET` |
+| 文件大小 | 48,533,437 bytes |
+| APK SHA-256 | `10b3dee42868eb9c8a7ae13eb87b004934c3566eb51924f70dba4958625558ee` |
+| 签名、包元数据、网络权限 | v2 Debug 签名有效；包名为 `com.reminder.local`，未声明 `INTERNET` |
 
-本地交付文件位于仓库工作目录的 `outputs/ReminderApp-v1.7.apk`，但 `*.apk` 已被 `.gitignore` 排除，不进入源码仓库。
+`*.apk` 已被 `.gitignore` 排除，不进入源码仓库。
 
 ## 验证命令
 
