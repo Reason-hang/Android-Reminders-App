@@ -60,6 +60,17 @@ class AlertTraceParserTest {
     }
 
     @Test
+    fun `scheduled alarm without receiver is not reported as a broken alert chain`() {
+        val summary = AlertTraceParser.summarizeOne("trace", listOf(
+            event(DiagnosticEventName.ALARM_SCHEDULED)
+        ))
+
+        assertEquals(DiagnosticEvidence.INSUFFICIENT, summary.evidence)
+        assertTrue(summary.conclusion.contains("已登记"))
+        assertTrue(!summary.conclusion.contains("中断"))
+    }
+
+    @Test
     fun `preempted alert is not misdiagnosed as a timeout`() {
         val summary = AlertTraceParser.summarizeOne("trace", listOf(
             event(DiagnosticEventName.ALERT_NOTIFICATION_POSTED),

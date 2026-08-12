@@ -69,6 +69,11 @@ object AlertTraceParser {
                 "应用已发布强提醒通知并请求全屏页，但没有收到页面恢复证据。",
                 "优先核对全屏通知权限、锁屏显示、悬浮窗和厂商后台策略；系统界面是否实际展示无法由应用单独确认。"
             )
+            has(DiagnosticEventName.ALARM_SCHEDULED) && !has(DiagnosticEventName.RECEIVER_ENTERED) -> Triple(
+                DiagnosticEvidence.INSUFFICIENT,
+                "提醒已登记，尚未收到到点接收器事件。",
+                "这不是已触发后的链路中断；若当前时间已超过 triggerAt，核对精确闹钟权限和接收器事件。"
+            )
             has(DiagnosticEventName.FOREGROUND_SERVICE_STARTED) -> Triple(
                 DiagnosticEvidence.INSUFFICIENT,
                 "强提醒服务已启动，但通知或全屏链路证据不完整。",

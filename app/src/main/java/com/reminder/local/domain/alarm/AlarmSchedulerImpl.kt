@@ -154,17 +154,57 @@ class AlarmSchedulerImpl @Inject constructor(
             throw IllegalStateException("精确闹钟权限未开启")
         }
         val triggerAt = System.currentTimeMillis() + delayMillis
+        val requestCode = snoozeAlarmRequestCode(reminder.alarmId)
+        val traceId = DiagnosticTraceId.alert(
+            reminder.id,
+            reminder.alarmId,
+            AlarmReceiver.KIND_SNOOZE,
+            triggerAt
+        )
         val operation = buildOperationPendingIntent(
             reminder,
             AlarmReceiver.KIND_SNOOZE,
-            snoozeAlarmRequestCode(reminder.alarmId),
+            requestCode,
             triggerAt
         )
         val showIntent = buildShowPendingIntent(reminder, AlarmReceiver.KIND_SNOOZE, triggerAt)
-        alarmManager.setAlarmClock(
-            AlarmManager.AlarmClockInfo(triggerAt, showIntent),
-            operation
-        )
+        runCatching {
+            alarmManager.setAlarmClock(
+                AlarmManager.AlarmClockInfo(triggerAt, showIntent),
+                operation
+            )
+        }.onSuccess {
+            diagnosticLogger.record(
+                DiagnosticStage.SCHEDULER,
+                DiagnosticEventName.ALARM_SCHEDULED,
+                traceId = traceId,
+                details = mapOf(
+                    "kind" to AlarmReceiver.KIND_SNOOZE,
+                    "triggerAt" to triggerAt,
+                    "requestCode" to requestCode,
+                    "source" to "snooze"
+                )
+            )
+            Log.i(
+                TAG,
+                "稍后提醒已注册 reminderId=${reminder.id} alarmId=${reminder.alarmId} " +
+                    "requestCode=$requestCode triggerAt=$triggerAt"
+            )
+        }.onFailure { error ->
+            diagnosticLogger.record(
+                DiagnosticStage.SCHEDULER,
+                DiagnosticEventName.ALARM_SCHEDULE_FAILED,
+                traceId = traceId,
+                level = DiagnosticLevel.ERROR,
+                outcome = error.javaClass.simpleName,
+                details = mapOf(
+                    "kind" to AlarmReceiver.KIND_SNOOZE,
+                    "triggerAt" to triggerAt,
+                    "source" to "snooze"
+                )
+            )
+            throw error
+        }
     }
 
     private fun cancelSnooze(reminder: Reminder) {

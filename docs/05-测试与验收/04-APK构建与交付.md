@@ -1,7 +1,7 @@
 # APK 构建与交付
 
-> 状态：v1.10 当前构建记录
-> 构建日期：2026-08-11
+> 状态：v1.11 当前构建记录
+> 构建日期：2026-08-12
 
 ## 目录
 
@@ -13,12 +13,12 @@
 
 | 项目 | 结果 |
 |---|---|
-| 构建产物 | `app/build/outputs/apk/release/app-release.apk`（对外交付文件为 `outputs/ReminderApp-v1.10.apk`） |
+| 构建产物 | `app/build/outputs/apk/release/app-release.apk`（对外交付文件为 `outputs/ReminderApp-v1.11.apk`） |
 | 包名 | `com.reminder.local` |
-| 版本 | `1.10 (11)` |
+| 版本 | `1.11 (12)` |
 | minSdk / targetSdk | 31 / 36 |
 | 文件大小 | 48,533,437 bytes |
-| APK SHA-256 | `10b3dee42868eb9c8a7ae13eb87b004934c3566eb51924f70dba4958625558ee` |
+| APK SHA-256 | `42901eaf476e5a4e110ed168815704db350754482331d204b91e1cf42965aee3` |
 | 签名、包元数据、网络权限 | v2 Debug 签名有效；包名为 `com.reminder.local`，未声明 `INTERNET` |
 
 `*.apk` 已被 `.gitignore` 排除，不进入源码仓库。
