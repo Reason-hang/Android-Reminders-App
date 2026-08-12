@@ -36,4 +36,15 @@ class AlarmAlertServiceSourceContractTest {
         assertTrue(source.contains("STOP_SOURCE_NOTIFICATION_DISMISSED"))
         assertTrue(source.contains("setDeleteIntent(dismissedPendingIntent)"))
     }
+
+    @Test
+    fun unlockedRouteOwnsOverlayLifecycleAndAvoidsDuplicateFullScreenIntent() {
+        val source = File("src/main/java/com/reminder/local/service/AlarmAlertService.kt").readText()
+
+        assertTrue(source.contains("AlarmVisualRoutePolicy.decide"))
+        assertTrue(source.contains("AlarmOverlayShowResult.SHOWN"))
+        assertTrue(source.contains("if (overlayShown) null else fullScreenPendingIntent"))
+        assertTrue(source.contains("dismissOverlay(\"timer_expired\")"))
+        assertTrue(source.contains("STOP_SOURCE_OVERLAY_SNOOZE"))
+    }
 }

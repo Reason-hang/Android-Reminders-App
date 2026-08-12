@@ -31,6 +31,7 @@ class ReminderPresentationSourceContractTest {
         val legacyEntry = File("src/main/java/com/reminder/local/ReminderEntryActivity.kt").readText()
 
         assertTrue(helper.contains("Intent(context, MainActivity::class.java)"))
+        assertTrue(helper.contains("NotificationCompat.Builder(context, CHANNEL_UNLOCKED_OVERLAY_ALERT)"))
         assertFalse(helper.contains("ReminderEntryActivity"))
         assertFalse(legacyEntry.contains("startReminderId"))
     }

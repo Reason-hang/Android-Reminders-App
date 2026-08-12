@@ -19,6 +19,10 @@
     <!-- Android 14+ 对全屏通知做了独立管控；闹钟/提醒类 App 属于合理使用场景。 -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
+    <!-- 解锁状态下 FullScreenIntent 会被系统降级成横幅；经用户明确授权后，
+         使用应用悬浮层显示可交互的强提醒页。 -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <!-- 开机自启，收到 BOOT_COMPLETED 后重新注册所有闹钟 -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 

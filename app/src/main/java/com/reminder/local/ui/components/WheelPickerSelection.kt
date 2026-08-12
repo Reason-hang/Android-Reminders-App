@@ -7,6 +7,20 @@ data class WheelItemPosition(
 )
 
 object WheelPickerSelection {
+    const val CYCLIC_ITEM_COUNT = Int.MAX_VALUE
+
+    fun cyclicInitialIndex(selectedIndex: Int, valueCount: Int): Int {
+        require(valueCount > 0)
+        require(selectedIndex in 0 until valueCount)
+        val middle = CYCLIC_ITEM_COUNT / 2
+        return middle - (middle % valueCount) + selectedIndex
+    }
+
+    fun cyclicValueIndex(virtualIndex: Int, valueCount: Int): Int {
+        require(valueCount > 0)
+        return Math.floorMod(virtualIndex, valueCount)
+    }
+
     fun nearestIndex(
         viewportStartOffset: Int,
         viewportEndOffset: Int,

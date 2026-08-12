@@ -39,7 +39,7 @@ import javax.inject.Singleton
  * 是早期方案留下的死代码。风险：CHANNEL_ADVANCE 在系统设置里显示名就是“提前提醒”，
  * 排查问题时极容易被误认成“控制提前提醒的渠道”而被用户误开关，
  * 实际上它从未影响过真正的强提醒。为避免继续误导，本轮已删除，只保留
- * 真正在用的 CHANNEL_FULLSCREEN_ALERT。
+ * 真正在用的锁屏强提醒、解锁悬浮层记录、前台服务和媒体失败兜底渠道。
  */
 @Singleton
 class NotificationHelper @Inject constructor(
@@ -48,6 +48,7 @@ class NotificationHelper @Inject constructor(
 
     companion object {
         const val CHANNEL_FULLSCREEN_ALERT = AlarmNotificationPolicy.STRONG_ALERT_CHANNEL_ID
+        const val CHANNEL_UNLOCKED_OVERLAY_ALERT = "reminder_unlocked_overlay_v1"
         const val CHANNEL_ALARM_SERVICE = AlarmNotificationPolicy.FOREGROUND_SERVICE_CHANNEL_ID
         const val CHANNEL_NOISY_FALLBACK = AlarmNotificationPolicy.NOISY_FALLBACK_CHANNEL_ID
         private const val TAG = "NotificationHelper"
@@ -80,6 +81,18 @@ class NotificationHelper @Inject constructor(
             setSound(null, null)
             lockscreenVisibility = NotificationCompat.VISIBILITY_SECRET
             setShowBadge(false)
+        }
+
+        val unlockedOverlayAlert = NotificationChannel(
+            CHANNEL_UNLOCKED_OVERLAY_ALERT,
+            "解锁强提醒记录",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = "解锁时已由应用显示强提醒页，这里仅保留通知中心记录"
+            enableVibration(false)
+            setSound(null, null)
+            lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
+            setShowBadge(true)
         }
 
         val alarmAudioAttributes = AudioAttributes.Builder()
@@ -125,8 +138,13 @@ class NotificationHelper @Inject constructor(
             )
         )
 
-        manager.createNotificationChannels(listOf(fullScreenAlert, alarmService) + fallbackChannels)
-        (listOf(CHANNEL_FULLSCREEN_ALERT, CHANNEL_ALARM_SERVICE) + fallbackChannels.map { it.id })
+        manager.createNotificationChannels(
+            listOf(fullScreenAlert, unlockedOverlayAlert, alarmService) + fallbackChannels
+        )
+        (
+            listOf(CHANNEL_FULLSCREEN_ALERT, CHANNEL_UNLOCKED_OVERLAY_ALERT, CHANNEL_ALARM_SERVICE) +
+                fallbackChannels.map { it.id }
+            )
             .forEach { id ->
                 manager.getNotificationChannel(id)?.let { channel ->
                     Log.i(
@@ -159,7 +177,7 @@ class NotificationHelper @Inject constructor(
             contentIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val notification = NotificationCompat.Builder(context, CHANNEL_FULLSCREEN_ALERT)
+        val notification = NotificationCompat.Builder(context, CHANNEL_UNLOCKED_OVERLAY_ALERT)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title)
             .setContentText(previewText)

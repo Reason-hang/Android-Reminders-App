@@ -560,7 +560,8 @@ private fun WheelTimePickerDialog(
                         values = (0..59).toList(),
                         selected = selectedMinute,
                         onSelected = { selectedMinute = it },
-                        modifier = Modifier.width(104.dp)
+                        modifier = Modifier.width(104.dp),
+                        cyclic = true
                     )
                 }
             }
@@ -580,11 +581,18 @@ private fun WheelNumberColumn(
     values: List<Int>,
     selected: Int,
     onSelected: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    cyclic: Boolean = false
 ) {
     val itemHeight = 56.dp
     val selectedIndex = values.indexOf(selected).coerceAtLeast(0)
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = selectedIndex)
+    val initialListIndex = if (cyclic) {
+        WheelPickerSelection.cyclicInitialIndex(selectedIndex, values.size)
+    } else {
+        selectedIndex
+    }
+    val itemCount = if (cyclic) WheelPickerSelection.CYCLIC_ITEM_COUNT else values.size
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialListIndex)
     val coroutineScope = rememberCoroutineScope()
     val snapFlingBehavior = rememberSnapFlingBehavior(lazyListState = listState)
     val centeredIndex by remember(listState) {
@@ -596,17 +604,22 @@ private fun WheelNumberColumn(
                 items = layoutInfo.visibleItemsInfo.map { item ->
                     WheelItemPosition(item.index, item.offset, item.size)
                 }
-            )?.coerceIn(values.indices) ?: selectedIndex
+            )?.coerceIn(0 until itemCount) ?: initialListIndex
         }
+    }
+    val centeredValueIndex = if (cyclic) {
+        WheelPickerSelection.cyclicValueIndex(centeredIndex, values.size)
+    } else {
+        centeredIndex
     }
 
     LaunchedEffect(selected) {
-        if (!listState.isScrollInProgress && centeredIndex != selectedIndex) {
+        if (!cyclic && !listState.isScrollInProgress && centeredIndex != selectedIndex) {
             listState.animateScrollToItem(selectedIndex)
         }
     }
-    LaunchedEffect(centeredIndex) {
-        onSelected(values[centeredIndex])
+    LaunchedEffect(centeredValueIndex) {
+        onSelected(values[centeredValueIndex])
     }
 
     LazyColumn(
@@ -616,8 +629,13 @@ private fun WheelNumberColumn(
         flingBehavior = snapFlingBehavior,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        items(values.size) { index ->
-            val value = values[index]
+        items(itemCount) { index ->
+            val valueIndex = if (cyclic) {
+                WheelPickerSelection.cyclicValueIndex(index, values.size)
+            } else {
+                index
+            }
+            val value = values[valueIndex]
             val isSelected = index == centeredIndex
             Text(
                 text = "%02d".format(value),

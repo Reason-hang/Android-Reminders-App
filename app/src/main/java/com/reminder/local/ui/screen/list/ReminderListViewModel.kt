@@ -34,6 +34,7 @@ data class ReminderListUiState(
     val categoryMap: Map<Long, Category> = emptyMap(),
     val selectedCategoryId: Long = ALL_CATEGORY_FILTER_ID,
     val exactAlarmGranted: Boolean = true,
+    val overlayGranted: Boolean = false,
     val pendingDeleteReminder: Reminder? = null,
     val pendingCompleteScopeReminder: Reminder? = null
 )
@@ -55,7 +56,12 @@ class ReminderListViewModel @Inject constructor(
 
     private val selectedCategoryId = MutableStateFlow(ALL_CATEGORY_FILTER_ID)
     private val dialogState = MutableStateFlow(Pair<Reminder?, Reminder?>(null, null))
-    private val exactAlarmGranted = MutableStateFlow(PermissionUtils.canScheduleExactAlarms(context))
+    private data class PermissionStatus(
+        val exactAlarmGranted: Boolean,
+        val overlayGranted: Boolean
+    )
+
+    private val permissionStatus = MutableStateFlow(currentPermissionStatus())
 
     private val _events = MutableSharedFlow<ListEvent>()
     val events = _events.asSharedFlow()
@@ -65,8 +71,8 @@ class ReminderListViewModel @Inject constructor(
         categoryRepository.observeAll(),
         selectedCategoryId,
         dialogState,
-        exactAlarmGranted
-    ) { reminders, categories, selectedId, dialogs, isExactAlarmGranted ->
+        permissionStatus
+    ) { reminders, categories, selectedId, dialogs, permissions ->
         val filtered = when (selectedId) {
             ALL_CATEGORY_FILTER_ID -> reminders
             UNCATEGORIZED_FILTER_ID -> reminders.filter { it.categoryId == null }
@@ -83,7 +89,8 @@ class ReminderListViewModel @Inject constructor(
             categories = categories,
             categoryMap = categories.associateBy { it.id },
             selectedCategoryId = selectedId,
-            exactAlarmGranted = isExactAlarmGranted,
+            exactAlarmGranted = permissions.exactAlarmGranted,
+            overlayGranted = permissions.overlayGranted,
             pendingDeleteReminder = dialogs.first,
             pendingCompleteScopeReminder = dialogs.second
         )
@@ -94,8 +101,13 @@ class ReminderListViewModel @Inject constructor(
     }
 
     fun refreshExactAlarmPermission() {
-        exactAlarmGranted.value = PermissionUtils.canScheduleExactAlarms(context)
+        permissionStatus.value = currentPermissionStatus()
     }
+
+    private fun currentPermissionStatus() = PermissionStatus(
+        exactAlarmGranted = PermissionUtils.canScheduleExactAlarms(context),
+        overlayGranted = PermissionUtils.canDrawOverlays(context)
+    )
 
     /** 点击勾选框 或 右滑：非重复直接完成/取消完成；重复提醒需要先问清楚"仅本次"还是"全部"。 */
     fun onToggleComplete(reminder: Reminder) {

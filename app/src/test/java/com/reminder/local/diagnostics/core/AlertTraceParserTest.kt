@@ -89,6 +89,20 @@ class AlertTraceParserTest {
         assertEquals(DiagnosticEvidence.CONFIRMED, summary.evidence)
     }
 
+    @Test
+    fun `overlay window attachment is confirmed unlocked strong alert evidence`() {
+        val summary = AlertTraceParser.summarizeOne(
+            "trace",
+            listOf(
+                event(DiagnosticEventName.OVERLAY_REQUESTED),
+                event(DiagnosticEventName.OVERLAY_SHOWN)
+            )
+        )
+
+        assertEquals(DiagnosticEvidence.CONFIRMED, summary.evidence)
+        assertTrue(summary.conclusion.contains("悬浮页"))
+    }
+
     private fun event(name: String, details: Map<String, String> = emptyMap()) = DiagnosticEvent(
         id = name,
         recordedAtMillis = 1L,

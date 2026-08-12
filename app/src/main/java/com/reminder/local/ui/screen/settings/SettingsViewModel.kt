@@ -19,7 +19,8 @@ import javax.inject.Inject
 data class SettingsUiState(
     val settings: AppSettings = AppSettings(),
     val exactAlarmGranted: Boolean = true,
-    val fullScreenIntentGranted: Boolean = true
+    val fullScreenIntentGranted: Boolean = true,
+    val overlayGranted: Boolean = false
 )
 
 @HiltViewModel
@@ -37,7 +38,8 @@ class SettingsViewModel @Inject constructor(
         SettingsUiState(
             settings = settings,
             exactAlarmGranted = PermissionUtils.canScheduleExactAlarms(context),
-            fullScreenIntentGranted = PermissionUtils.canUseFullScreenIntent(context)
+            fullScreenIntentGranted = PermissionUtils.canUseFullScreenIntent(context),
+            overlayGranted = PermissionUtils.canDrawOverlays(context)
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsUiState())
 

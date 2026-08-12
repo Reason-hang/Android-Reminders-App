@@ -33,6 +33,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
         val kind = com.reminder.local.service.AlarmAlertKind.fromWireValue(
             intent.getStringExtra(EXTRA_ALARM_KIND)
         )
+        val requestedSource = intent.getStringExtra(EXTRA_ACTION_SOURCE)
         if (reminderId < 0) return
 
         val pendingResult = goAsync()
@@ -53,7 +54,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
                                 alarmId,
                                 kind,
                                 occurrenceTime,
-                                AlarmAlertService.STOP_SOURCE_NOTIFICATION_ACTION_DONE
+                                requestedSource
+                                    ?: AlarmAlertService.STOP_SOURCE_NOTIFICATION_ACTION_DONE
                             )
                         } else {
                             Log.e(TAG, "通知栏完成操作失败 reminderId=${reminder.id}")
@@ -72,7 +74,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
                                 alarmId,
                                 kind,
                                 occurrenceTime,
-                                AlarmAlertService.STOP_SOURCE_NOTIFICATION_ACTION_SNOOZE
+                                requestedSource
+                                    ?: AlarmAlertService.STOP_SOURCE_NOTIFICATION_ACTION_SNOOZE
                             )
                         }
                     }
@@ -117,6 +120,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
         const val EXTRA_ALARM_ID = "extra_alarm_id"
         const val EXTRA_ALARM_KIND = "extra_alarm_kind"
         const val EXTRA_OCCURRENCE_TIME = "extra_occurrence_time"
+        const val EXTRA_ACTION_SOURCE = "extra_action_source"
         const val ACTION_MARK_DONE = "com.reminder.local.action.MARK_DONE"
         const val ACTION_SNOOZE = "com.reminder.local.action.SNOOZE"
         const val SNOOZE_DELAY_MILLIS = 10 * 60 * 1000L // 10 分钟

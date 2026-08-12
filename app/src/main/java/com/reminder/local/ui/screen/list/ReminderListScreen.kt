@@ -132,6 +132,20 @@ fun ReminderListScreen(
                 )
             }
 
+            if (!uiState.overlayGranted) {
+                PermissionBanner(
+                    text = "解锁强提醒页未开启，解锁使用手机时只会显示系统横幅",
+                    onActionClick = {
+                        runCatching {
+                            context.startActivity(PermissionUtils.overlaySettingsIntent(context))
+                        }.onFailure {
+                            context.startActivity(PermissionUtils.appDetailsSettingsIntent(context))
+                        }
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                )
+            }
+
             CategoryFilterRow(
                 categories = uiState.categories,
                 selectedId = uiState.selectedCategoryId,

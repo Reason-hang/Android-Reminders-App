@@ -39,6 +39,11 @@ object AlertTraceParser {
         val started = events.firstOrNull()?.recordedAtMillis ?: 0L
         val last = events.lastOrNull()?.recordedAtMillis ?: started
         val (evidence, conclusion, nextAction) = when {
+            has(DiagnosticEventName.OVERLAY_FAILED) -> Triple(
+                DiagnosticEvidence.CONFIRMED,
+                "解锁强提醒悬浮页未能显示。",
+                "检查事件 outcome 和 overlayAllowed；未授权时请在设置中开启解锁强提醒页。"
+            )
             has(DiagnosticEventName.FULL_SCREEN_REQUEST_FAILED) -> Triple(
                 DiagnosticEvidence.CONFIRMED,
                 "全屏页启动请求在应用侧失败。",
@@ -48,6 +53,11 @@ object AlertTraceParser {
                 DiagnosticEvidence.CONFIRMED,
                 "该强提醒已被后续提醒接管，并保留为静音回看通知。",
                 "这是并发提醒切换，不是十分钟自动结束；查看事件详情中的接管实例。"
+            )
+            has(DiagnosticEventName.OVERLAY_SHOWN) -> Triple(
+                DiagnosticEvidence.CONFIRMED,
+                "应用已确认解锁强提醒悬浮页添加到系统窗口。",
+                "若画面仍异常，请结合录屏核对 SystemUI 或厂商悬浮窗呈现。"
             )
             openedByFullScreenNotification -> Triple(
                 DiagnosticEvidence.CONFIRMED,

@@ -3,6 +3,7 @@ package com.reminder.local.service
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.ActivityOptions
+import android.app.KeyguardManager
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
@@ -19,6 +20,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -32,6 +34,7 @@ import com.reminder.local.R
 import com.reminder.local.notification.NotificationHelper
 import com.reminder.local.notification.AlarmNotificationPolicy
 import com.reminder.local.receiver.NotificationActionReceiver
+import com.reminder.local.util.PermissionUtils
 import com.reminder.local.diagnostics.core.DiagnosticEventName
 import com.reminder.local.diagnostics.core.DiagnosticLevel
 import com.reminder.local.diagnostics.core.DiagnosticStage
@@ -54,6 +57,7 @@ class AlarmAlertService : Service() {
     private var currentInstance: AlarmAlertInstanceKey? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var autoStopRunnable: Runnable? = null
+    private var overlayController: AlarmOverlayController? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -113,6 +117,7 @@ class AlarmAlertService : Service() {
                         .onFailure { Log.e(TAG, "保留上一条提醒失败，继续投递新提醒", it) }
                 } else if (AlarmAlertConcurrencyPolicy.shouldRestartPlayback(activeAlarmId)) {
                     // 同一提醒的提前触发尚未关闭时，到点触发仍要成为一次新的强提醒。
+                    dismissOverlay("restarted_by_new_occurrence")
                     stopRingtoneAndVibration()
                 }
                 currentNotificationId = alarmId
@@ -167,6 +172,89 @@ class AlarmAlertService : Service() {
                     Log.e(TAG, "创建通知点击 PendingIntent 失败，继续全屏通知链路", it)
                 }.getOrNull()
 
+                val powerManager = getSystemService(PowerManager::class.java)
+                val keyguardManager = getSystemService(KeyguardManager::class.java)
+                val visualRoute = AlarmVisualRoutePolicy.decide(
+                    interactive = powerManager.isInteractive,
+                    keyguardLocked = keyguardManager.isKeyguardLocked,
+                    overlayAllowed = PermissionUtils.canDrawOverlays(this)
+                )
+                if (visualRoute != AlarmVisualRoute.SYSTEM_FULL_SCREEN) {
+                    diagnosticLogger.record(
+                        DiagnosticStage.FULL_SCREEN,
+                        DiagnosticEventName.OVERLAY_REQUESTED,
+                        traceId = traceId,
+                        details = mapOf("route" to visualRoute.name.lowercase())
+                    )
+                }
+                val overlayResult = when {
+                    visualRoute == AlarmVisualRoute.SYSTEM_FULL_SCREEN -> null
+                    !foregroundStarted -> AlarmOverlayShowResult.ADD_VIEW_FAILED
+                    visualRoute == AlarmVisualRoute.SYSTEM_NOTIFICATION_FALLBACK ->
+                        AlarmOverlayShowResult.PERMISSION_MISSING
+                    else -> {
+                        val controller = overlayController ?: AlarmOverlayController(this).also {
+                            overlayController = it
+                        }
+                        controller.show(
+                            title = title,
+                            note = note,
+                            kind = kind,
+                            occurrenceTime = alarmTime,
+                            onClose = {
+                                acknowledgeAlert(
+                                    stopIntent(
+                                        context = this,
+                                        reminderId = reminderId,
+                                        alarmId = alarmId,
+                                        title = title,
+                                        note = note,
+                                        kind = kind,
+                                        occurrenceTime = alarmTime,
+                                        source = STOP_SOURCE_OVERLAY_CLOSE
+                                    )
+                                )
+                            },
+                            onSnooze = {
+                                sendOverlayAction(
+                                    NotificationActionReceiver.ACTION_SNOOZE,
+                                    reminderId,
+                                    alarmId,
+                                    kind,
+                                    alarmTime,
+                                    STOP_SOURCE_OVERLAY_SNOOZE
+                                )
+                            },
+                            onDone = {
+                                sendOverlayAction(
+                                    NotificationActionReceiver.ACTION_MARK_DONE,
+                                    reminderId,
+                                    alarmId,
+                                    kind,
+                                    alarmTime,
+                                    STOP_SOURCE_OVERLAY_DONE
+                                )
+                            }
+                        )
+                    }
+                }
+                val overlayShown = overlayResult == AlarmOverlayShowResult.SHOWN
+                if (overlayResult != null) {
+                    diagnosticLogger.record(
+                        DiagnosticStage.FULL_SCREEN,
+                        if (overlayShown) {
+                            DiagnosticEventName.OVERLAY_SHOWN
+                        } else {
+                            DiagnosticEventName.OVERLAY_FAILED
+                        },
+                        traceId = traceId,
+                        level = if (overlayShown) DiagnosticLevel.INFO else DiagnosticLevel.ERROR,
+                        outcome = overlayResult.name.lowercase(),
+                        details = mapOf("route" to visualRoute.name.lowercase()),
+                        captureSnapshot = true
+                    )
+                }
+
                 val playback = if (foregroundStarted) {
                     runCatching { startAlert(sound, vibrate) }
                         .getOrElse {
@@ -206,9 +294,12 @@ class AlarmAlertService : Service() {
                         sound = delivery.fallbackSound,
                         vibrate = delivery.fallbackVibration
                     )
+                } else if (overlayShown) {
+                    NotificationHelper.CHANNEL_UNLOCKED_OVERLAY_ALERT
                 } else {
                     NotificationHelper.CHANNEL_FULLSCREEN_ALERT
                 }
+                val notificationFullScreenIntent = if (overlayShown) null else fullScreenPendingIntent
 
                 diagnosticLogger.record(
                     DiagnosticStage.NOTIFICATION,
@@ -224,7 +315,7 @@ class AlarmAlertService : Service() {
                             alarmId = alarmId,
                             content = content,
                             contentPendingIntent = contentPendingIntent,
-                            fullScreenPendingIntent = fullScreenPendingIntent,
+                            fullScreenPendingIntent = notificationFullScreenIntent,
                             kind = kind,
                             occurrenceTime = alarmTime,
                             channelId = alertChannelId
@@ -243,33 +334,36 @@ class AlarmAlertService : Service() {
                     captureSnapshot = true
                 )
 
-                diagnosticLogger.record(
-                    DiagnosticStage.FULL_SCREEN,
-                    if (notificationPosted && fullScreenPendingIntent != null) {
-                        DiagnosticEventName.FULL_SCREEN_REQUESTED
-                    } else {
-                        DiagnosticEventName.FULL_SCREEN_REQUEST_FAILED
-                    },
-                    traceId = traceId,
-                    level = if (notificationPosted && fullScreenPendingIntent != null) {
-                        DiagnosticLevel.INFO
-                    } else {
-                        DiagnosticLevel.ERROR
-                    },
-                    outcome = if (notificationPosted && fullScreenPendingIntent != null) {
-                        "notification_manager_delivery"
-                    } else {
-                        "notification_or_pending_intent_failed"
-                    },
-                    details = mapOf("route" to "notification_full_screen"),
-                    captureSnapshot = true
-                )
+                if (!overlayShown) {
+                    diagnosticLogger.record(
+                        DiagnosticStage.FULL_SCREEN,
+                        if (notificationPosted && notificationFullScreenIntent != null) {
+                            DiagnosticEventName.FULL_SCREEN_REQUESTED
+                        } else {
+                            DiagnosticEventName.FULL_SCREEN_REQUEST_FAILED
+                        },
+                        traceId = traceId,
+                        level = if (notificationPosted && notificationFullScreenIntent != null) {
+                            DiagnosticLevel.INFO
+                        } else {
+                            DiagnosticLevel.ERROR
+                        },
+                        outcome = if (notificationPosted && notificationFullScreenIntent != null) {
+                            "notification_manager_delivery"
+                        } else {
+                            "notification_or_pending_intent_failed"
+                        },
+                        details = mapOf("route" to visualRoute.name.lowercase()),
+                        captureSnapshot = true
+                    )
+                }
 
                 Log.i(
                     TAG,
                     "强提醒投递完毕 alarmId=$alarmId kind=$kind foreground=$foregroundStarted " +
                         "soundRequested=$sound soundStarted=${playback.soundStarted} " +
                         "vibrateRequested=$vibrate vibrationStarted=${playback.vibrationStarted} " +
+                        "visualRoute=$visualRoute overlayShown=$overlayShown " +
                         "fallback=${delivery.useFallbackChannel} channel=$alertChannelId"
                 )
                 if (!foregroundStarted) {
@@ -286,6 +380,7 @@ class AlarmAlertService : Service() {
     override fun onDestroy() {
         Log.d(TAG, "onDestroy alarmId=$currentNotificationId")
         cancelAutoStop()
+        dismissOverlay("service_destroyed")
         stopRingtoneAndVibration()
         super.onDestroy()
     }
@@ -333,6 +428,7 @@ class AlarmAlertService : Service() {
         val reminderId = currentReminderId
         val alarmId = currentNotificationId
         val content = currentContent
+        dismissOverlay("timer_expired")
         stopRingtoneAndVibration()
         diagnosticLogger.record(
             DiagnosticStage.TIMER,
@@ -661,6 +757,7 @@ class AlarmAlertService : Service() {
             return
         }
         cancelAutoStop()
+        dismissOverlay(stopSource)
         stopRingtoneAndVibration()
         runCatching { NotificationManagerCompat.from(this).cancel(alarmId) }
             .onFailure { Log.e(TAG, "取消当前通知失败 alarmId=$alarmId", it) }
@@ -693,6 +790,7 @@ class AlarmAlertService : Service() {
         val content = currentContent ?: return
         val alarmId = currentNotificationId
         cancelAutoStop()
+        dismissOverlay("alert_retained")
         stopRingtoneAndVibration()
         runCatching { NotificationManagerCompat.from(this).cancel(alarmId) }
         if (removeForeground) runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
@@ -703,6 +801,47 @@ class AlarmAlertService : Service() {
             previewText = content.previewText
         ) }.onFailure { Log.e(TAG, "切换提醒时保留上一条通知失败 alarmId=$alarmId", it) }
         clearCurrentAlert()
+    }
+
+    private fun sendOverlayAction(
+        action: String,
+        reminderId: Long,
+        alarmId: Int,
+        kind: AlarmAlertKind,
+        occurrenceTime: Long,
+        source: String
+    ) {
+        sendBroadcast(
+            Intent(this, NotificationActionReceiver::class.java).apply {
+                this.action = action
+                data = Uri.parse(
+                    AlarmIntentIdentity.action(
+                        reminderId,
+                        alarmId,
+                        kind,
+                        occurrenceTime,
+                        source
+                    )
+                )
+                putExtra(NotificationActionReceiver.EXTRA_REMINDER_ID, reminderId)
+                putExtra(NotificationActionReceiver.EXTRA_ALARM_ID, alarmId)
+                putExtra(NotificationActionReceiver.EXTRA_ALARM_KIND, kind.name)
+                putExtra(NotificationActionReceiver.EXTRA_OCCURRENCE_TIME, occurrenceTime)
+                putExtra(NotificationActionReceiver.EXTRA_ACTION_SOURCE, source)
+            }
+        )
+    }
+
+    private fun dismissOverlay(source: String) {
+        val instance = currentInstance
+        if (overlayController?.dismiss() == true && instance != null) {
+            diagnosticLogger.record(
+                DiagnosticStage.FULL_SCREEN,
+                DiagnosticEventName.OVERLAY_DISMISSED,
+                traceId = traceFor(instance),
+                details = mapOf("source" to source)
+            )
+        }
     }
 
     private fun clearCurrentAlert() {
@@ -776,6 +915,9 @@ class AlarmAlertService : Service() {
         const val STOP_SOURCE_NOTIFICATION_DISMISSED = "notification_dismissed"
         const val STOP_SOURCE_NOTIFICATION_ACTION_SNOOZE = "notification_action_snooze"
         const val STOP_SOURCE_NOTIFICATION_ACTION_DONE = "notification_action_done"
+        const val STOP_SOURCE_OVERLAY_CLOSE = "overlay_close"
+        const val STOP_SOURCE_OVERLAY_SNOOZE = "overlay_snooze"
+        const val STOP_SOURCE_OVERLAY_DONE = "overlay_done"
 
         private const val FALLBACK_NOTIFICATION_ID = 4001
 

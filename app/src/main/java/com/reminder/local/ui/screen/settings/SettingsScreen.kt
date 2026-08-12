@@ -128,6 +128,37 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column(modifier = Modifier.weight(1f)) {
+                    Text("解锁强提醒页")
+                    Text(
+                        if (uiState.overlayGranted) {
+                            "已开启，解锁使用手机时由应用显示强提醒页"
+                        } else {
+                            "未开启，解锁时只能退化为系统横幅"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (uiState.overlayGranted) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        }
+                    )
+                }
+                if (!uiState.overlayGranted) {
+                    TextButton(onClick = {
+                        runCatching {
+                            context.startActivity(PermissionUtils.overlaySettingsIntent(context))
+                        }.onFailure {
+                            context.startActivity(PermissionUtils.appDetailsSettingsIntent(context))
+                        }
+                    }) { Text("去开启") }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text("全屏提醒")
                     Text(
                         if (uiState.fullScreenIntentGranted) "已开启，锁屏时可弹出强提醒" else "未开启，可能退化成普通通知",
@@ -150,7 +181,8 @@ fun SettingsScreen(
                     "任何一项被关闭，都可能出现\"响铃震动正常，但锁屏看不到内容\"或\n" +
                     "\"App 在后台时不会自动弹出提醒页，只有手动打开 App 才看得到\"：\n" +
                     "1. 通知设置里确认\"允许在锁屏上显示通知\"为开启，且未选择\"隐藏敏感内容\"；\n" +
-                    "2. 小米/红米机型另需在权限管理里额外开启\"锁屏显示\"和\"悬浮窗\"（后台弹出界面）。",
+                    "2. 小米/红米机型另需在权限管理里额外开启\"锁屏显示\"；\n" +
+                    "3. 上方\"解锁强提醒页\"必须开启，否则解锁状态仍会按系统规则显示横幅。",
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 8.dp)
             )

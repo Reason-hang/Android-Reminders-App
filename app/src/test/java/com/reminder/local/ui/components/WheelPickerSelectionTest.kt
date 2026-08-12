@@ -6,6 +6,19 @@ import org.junit.Test
 class WheelPickerSelectionTest {
 
     @Test
+    fun cyclicMinutePlaces59And58ImmediatelyBefore00() {
+        val zeroPosition = WheelPickerSelection.cyclicInitialIndex(
+            selectedIndex = 0,
+            valueCount = 60
+        )
+
+        assertEquals(0, WheelPickerSelection.cyclicValueIndex(zeroPosition, 60))
+        assertEquals(59, WheelPickerSelection.cyclicValueIndex(zeroPosition - 1, 60))
+        assertEquals(58, WheelPickerSelection.cyclicValueIndex(zeroPosition - 2, 60))
+        assertEquals(1, WheelPickerSelection.cyclicValueIndex(zeroPosition + 1, 60))
+    }
+
+    @Test
     fun choosesItemNearestViewportCenter() {
         val items = listOf(
             WheelItemPosition(index = 8, offset = -20, size = 56),

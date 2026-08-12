@@ -23,6 +23,8 @@ object PermissionUtils {
         return notificationManager.canUseFullScreenIntent()
     }
 
+    fun canDrawOverlays(context: Context): Boolean = Settings.canDrawOverlays(context)
+
     /** 跳转到系统"闹钟和提醒"特殊权限设置页，引导用户手动开启精确闹钟。 */
     fun exactAlarmSettingsIntent(context: Context): Intent =
         Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
@@ -36,6 +38,11 @@ object PermissionUtils {
             }
         } else {
             appDetailsSettingsIntent(context)
+        }
+
+    fun overlaySettingsIntent(context: Context): Intent =
+        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+            data = Uri.parse("package:${context.packageName}")
         }
 
     /** 跳转到系统应用详情页（用于引导用户去开通知权限/自启动/无限制后台等）。 */

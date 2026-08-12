@@ -84,6 +84,7 @@ class AppDiagnosticLogger @Inject constructor(
             "receiver_entered",
             "foreground_service_failed",
             "full_screen_request_failed",
+            "overlay_failed",
             "timer_expired"
         )
     }
@@ -100,6 +101,7 @@ class AppDiagnosticLogger @Inject constructor(
             "model" to Build.MODEL,
             "exactAlarmAllowed" to PermissionUtils.canScheduleExactAlarms(context),
             "fullScreenIntentAllowed" to PermissionUtils.canUseFullScreenIntent(context),
+            "overlayAllowed" to PermissionUtils.canDrawOverlays(context),
             "notificationsEnabled" to NotificationManagerCompat.from(context).areNotificationsEnabled(),
             "notificationPermission" to if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
