@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.reminder.local.domain.model.Category
 import com.reminder.local.domain.model.Reminder
@@ -46,8 +47,25 @@ fun ReminderListItem(
     onToggleComplete: () -> Unit,
     onSwipeComplete: () -> Unit,
     onRequestDelete: () -> Unit,
+    isManagementMode: Boolean = false,
+    isSelected: Boolean = false,
+    onManageSelect: () -> Unit = {},
+    dragHandleModifier: Modifier = Modifier,
     modifier: Modifier = Modifier
 ) {
+    if (isManagementMode) {
+        ReminderCard(
+            reminder = reminder,
+            category = category,
+            onClick = onManageSelect,
+            onToggleComplete = onManageSelect,
+            isManagementMode = true,
+            isSelected = isSelected,
+            dragHandleModifier = dragHandleModifier,
+            modifier = modifier
+        )
+        return
+    }
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             when (value) {
@@ -73,7 +91,8 @@ fun ReminderListItem(
             reminder = reminder,
             category = category,
             onClick = onClick,
-            onToggleComplete = onToggleComplete
+            onToggleComplete = onToggleComplete,
+            modifier = Modifier
         )
     }
 }
@@ -106,25 +125,32 @@ private fun ReminderCard(
     reminder: Reminder,
     category: Category?,
     onClick: () -> Unit,
-    onToggleComplete: () -> Unit
+    onToggleComplete: () -> Unit,
+    isManagementMode: Boolean = false,
+    isSelected: Boolean = false,
+    dragHandleModifier: Modifier = Modifier,
+    modifier: Modifier = Modifier
 ) {
     val formatted = TimeFormatter.format(reminder.effectiveTime)
     val isDone = reminder.status == ReminderStatus.DONE
 
     Card(
         onClick = onClick,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
+            .padding(horizontal = 10.dp, vertical = 2.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp, horizontal = 4.dp),
+                .padding(vertical = 2.dp, horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Checkbox(checked = isDone, onCheckedChange = { onToggleComplete() })
+            Checkbox(
+                checked = if (isManagementMode) isSelected else isDone,
+                onCheckedChange = { onToggleComplete() }
+            )
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -132,10 +158,12 @@ private fun ReminderCard(
             ) {
                 Text(
                     text = reminder.title,
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium,
                     textDecoration = if (isDone) TextDecoration.LineThrough else null,
-                    color = if (isDone) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+                    color = if (isDone) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -143,7 +171,7 @@ private fun ReminderCard(
                 ) {
                     Text(
                         text = formatted.text,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.labelMedium,
                         color = if (formatted.isOverdue) Color(0xFFD32F2F) else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     if (reminder.isRepeating) {
@@ -161,6 +189,14 @@ private fun ReminderCard(
                         )
                     }
                 }
+            }
+            if (isManagementMode) {
+                Text(
+                    text = "⠿",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = dragHandleModifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                )
             }
         }
     }

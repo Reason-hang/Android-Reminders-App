@@ -51,14 +51,23 @@ class AddReminderUseCaseTest {
     }
 
     @Test
-    fun titleLongerThanFiftyCharactersIsRejectedBeforePersistence() = runBlocking {
+    fun titleLongerThanFiveHundredCharactersIsRejectedBeforePersistence() = runBlocking {
         val repository = FakeReminderRepository()
         val useCase = AddReminderUseCase(repository, ThrowingAlarmScheduler(IllegalStateException("unused")))
 
-        val result = useCase(futureReminder().copy(title = "a".repeat(51)))
+        val result = useCase(futureReminder().copy(title = "a".repeat(501)))
 
-        assertEquals(SaveResult.Failure("标题最多 50 个字符"), result)
+        assertEquals(SaveResult.Failure("标题最多 500 个字符"), result)
         assertTrue(!repository.deletedAfterInsert)
+    }
+
+    @Test
+    fun titleOfExactlyFiveHundredCharactersIsAcceptedByContentValidation() = runBlocking {
+        val result = AddReminderUseCase(FakeReminderRepository(), RecordingScheduler())(
+            futureReminder().copy(title = "a".repeat(500))
+        )
+
+        assertTrue(result is SaveResult.Success)
     }
 
     @Test
@@ -90,6 +99,13 @@ private class ThrowingAlarmScheduler(
     override fun scheduleSnooze(reminder: Reminder, delayMillis: Long) = Unit
 }
 
+private class RecordingScheduler : AlarmScheduler {
+    override fun canScheduleExactAlarms(): Boolean = true
+    override fun scheduleExact(reminder: Reminder) = Unit
+    override fun cancel(reminder: Reminder) = Unit
+    override fun scheduleSnooze(reminder: Reminder, delayMillis: Long) = Unit
+}
+
 private class FakeReminderRepository(
     private val usedAlarmIds: Set<Int> = emptySet()
 ) : ReminderRepository {
@@ -98,7 +114,9 @@ private class FakeReminderRepository(
         private set
 
     override fun observeAll(): Flow<List<Reminder>> = flowOf(emptyList())
+    override fun observeDeleted(): Flow<List<Reminder>> = flowOf(emptyList())
     override suspend fun getById(id: Long): Reminder? = saved?.takeIf { it.id == id }
+    override suspend fun getByIdIncludingDeleted(id: Long): Reminder? = saved?.takeIf { it.id == id }
     override suspend fun isAlarmIdInUse(alarmId: Int): Boolean = alarmId in usedAlarmIds
     override suspend fun insert(reminder: Reminder): Long {
         saved = reminder.copy(id = 1L)
@@ -120,6 +138,8 @@ private class FakeReminderRepository(
         deletedAfterInsert = saved?.id == reminder.id
         saved = null
     }
+    override suspend fun nextManualSortOrder(): Long = 0L
+    override suspend fun replaceManualSortOrder(ids: List<Long>, updatedAt: Long): Boolean = true
     override suspend fun getAllPending(): List<Reminder> = saved?.let { listOf(it) } ?: emptyList()
     override suspend fun markNonRepeatingExpired(now: Long) = Unit
     override fun observeCountByCategory(categoryId: Long): Flow<Int> = flowOf(0)

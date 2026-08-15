@@ -3,6 +3,7 @@ package com.reminder.local.domain.usecase
 import com.reminder.local.domain.model.Reminder
 import com.reminder.local.domain.model.RepeatActionScope
 import com.reminder.local.domain.model.RepeatType
+import com.reminder.local.domain.model.ReminderStatus
 import com.reminder.local.testing.InMemoryReminderRepository
 import com.reminder.local.testing.RecordingAlarmScheduler
 import kotlinx.coroutines.runBlocking
@@ -26,7 +27,7 @@ class DeleteReminderUseCaseTest {
     @Test
     fun allDatabaseFailureDoesNotCancelExistingAlarm() = runBlocking {
         val reminder = repeatingReminder()
-        val repository = InMemoryReminderRepository(listOf(reminder)).apply { failDelete = true }
+        val repository = InMemoryReminderRepository(listOf(reminder)).apply { failUpdate = true }
         val scheduler = RecordingAlarmScheduler(listOf(reminder))
 
         runCatching {
@@ -34,6 +35,20 @@ class DeleteReminderUseCaseTest {
         }
 
         assertEquals(reminder, scheduler.scheduled[reminder.alarmId])
+    }
+
+    @Test
+    fun allMovesReminderToRecycleBinAndCancelsAlarm() = runBlocking {
+        val reminder = repeatingReminder()
+        val repository = InMemoryReminderRepository(listOf(reminder))
+        val scheduler = RecordingAlarmScheduler(listOf(reminder))
+
+        val success = DeleteReminderUseCase(repository, scheduler)(reminder, RepeatActionScope.ALL)
+
+        assertEquals(true, success)
+        assertEquals(ReminderStatus.DELETED, repository.requireReminder(reminder.id).status)
+        assertEquals(reminder.status, repository.requireReminder(reminder.id).statusBeforeDelete)
+        assertEquals(null, scheduler.scheduled[reminder.alarmId])
     }
 
     @Test

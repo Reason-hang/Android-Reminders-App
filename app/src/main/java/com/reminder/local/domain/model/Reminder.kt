@@ -29,7 +29,13 @@ data class Reminder(
     val alarmId: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
-    val completedAt: Long? = null
+    val completedAt: Long? = null,
+    /** 手动整理模式下的展示序号；不参与闹钟计算。 */
+    val manualSortOrder: Long = 0L,
+    /** 非空表示已进入回收站，正常列表和调度均不可见。 */
+    val deletedAt: Long? = null,
+    /** 进入回收站前的状态，用于恢复时回到原生命周期。 */
+    val statusBeforeDelete: ReminderStatus? = null
 ) {
     val isRepeating: Boolean get() = repeatType != RepeatType.NONE
 

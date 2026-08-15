@@ -156,7 +156,7 @@ fun EditReminderScreen(
                 .padding(padding)
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
             OutlinedTextField(
                 value = uiState.title,
@@ -171,7 +171,7 @@ fun EditReminderScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             OutlinedTextField(
                 value = uiState.note,
@@ -179,10 +179,10 @@ fun EditReminderScreen(
                 label = { Text("备注（可选）") },
                 supportingText = { Text("${uiState.note.length}/${ReminderContentValidator.NOTE_MAX_LENGTH}") },
                 modifier = Modifier.fillMaxWidth(),
-                minLines = 2
+                minLines = 1
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             Text("提醒时间", style = MaterialTheme.typography.labelSmall)
             Row(modifier = Modifier.padding(top = 6.dp)) {
@@ -198,45 +198,7 @@ fun EditReminderScreen(
                 Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text("分类", style = MaterialTheme.typography.labelSmall)
-            ExposedDropdownMenuBox(
-                expanded = categoryMenuExpanded,
-                onExpandedChange = { categoryMenuExpanded = it },
-                modifier = Modifier.padding(top = 6.dp)
-            ) {
-                OutlinedTextField(
-                    value = uiState.categories.firstOrNull { it.id == uiState.categoryId }?.name ?: "未分类",
-                    onValueChange = {},
-                    readOnly = true,
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryMenuExpanded) },
-                    modifier = Modifier.menuAnchor().fillMaxWidth()
-                )
-                ExposedDropdownMenu(
-                    expanded = categoryMenuExpanded,
-                    onDismissRequest = { categoryMenuExpanded = false }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("未分类") },
-                        onClick = {
-                            viewModel.onCategorySelected(null)
-                            categoryMenuExpanded = false
-                        }
-                    )
-                    uiState.categories.forEach { category ->
-                        DropdownMenuItem(
-                            text = { Text(category.name) },
-                            onClick = {
-                                viewModel.onCategorySelected(category.id)
-                                categoryMenuExpanded = false
-                            }
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             Text("提前提醒", style = MaterialTheme.typography.labelSmall)
             ExposedDropdownMenuBox(
@@ -279,7 +241,7 @@ fun EditReminderScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             Text("重复", style = MaterialTheme.typography.labelSmall)
             ExposedDropdownMenuBox(
@@ -319,7 +281,45 @@ fun EditReminderScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text("分类", style = MaterialTheme.typography.labelSmall)
+            ExposedDropdownMenuBox(
+                expanded = categoryMenuExpanded,
+                onExpandedChange = { categoryMenuExpanded = it },
+                modifier = Modifier.padding(top = 4.dp)
+            ) {
+                OutlinedTextField(
+                    value = uiState.categories.firstOrNull { it.id == uiState.categoryId }?.name ?: "未分类",
+                    onValueChange = {},
+                    readOnly = true,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryMenuExpanded) },
+                    modifier = Modifier.menuAnchor().fillMaxWidth()
+                )
+                ExposedDropdownMenu(
+                    expanded = categoryMenuExpanded,
+                    onDismissRequest = { categoryMenuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("未分类") },
+                        onClick = {
+                            viewModel.onCategorySelected(null)
+                            categoryMenuExpanded = false
+                        }
+                    )
+                    uiState.categories.forEach { category ->
+                        DropdownMenuItem(
+                            text = { Text(category.name) },
+                            onClick = {
+                                viewModel.onCategorySelected(category.id)
+                                categoryMenuExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -350,7 +350,7 @@ fun EditReminderScreen(
             // 不需要滚动。generalError 也已经改成顶部栏下方的 Snackbar 展示（见页面顶部），
             // 这里不再需要单独展示。
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 

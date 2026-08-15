@@ -1,95 +1,59 @@
 # Android Reminders App
 
-> 状态：v1.12 当前发布基线（解锁强提醒悬浮层已获授权并通过真机验证）
-> 更新时间：2026-08-12
-> 包名：`com.reminder.local`
-> 目标设备：红米 K80 Pro、HyperOS、Android 16
+> 当前版本：v1.13（versionCode 14）
+> 更新时间：2026-08-16
+> 包名：`com.reminder.local`；目标设备：红米 K80 Pro、HyperOS、Android 16
 
-Android 本地离线强提醒应用。v1.12 针对 Android 在已解锁状态把 FullScreenIntent 降级为横幅的确定性平台行为，新增经用户显式授权的应用悬浮强提醒页；锁屏继续使用系统 FullScreenIntent。时间选择器的分钟滚轮改为循环排列，`58、59、00、01` 可连续选择。
+单用户、完全离线的 Android 强提醒应用。核心是可靠调度和可恢复的数据闭环：提醒可新增、编辑、完成、移入回收站、恢复、永久删除和手动整理；不包含任何录音、音轨、语音转写、账号或联网功能。
 
-## 目录
+## 已实现能力
 
-- [产品定位](#产品定位)
-- [已实现功能](#已实现功能)
-- [强提醒语义](#强提醒语义)
-- [技术架构](#技术架构)
-- [当前验证](#当前验证)
-- [构建方式](#构建方式)
-- [文档入口](#文档入口)
-
-## 产品定位
-
-- 简体中文、单用户、完全离线，数据保存在本机 Room/SQLite。
-- 面向个人日常事项，重点保证准时、可重复、可提前、可稍后和锁屏可感知。
-- 不包含账号、联网、广告、统计、云同步、远程推送、桌面 Widget、自定义铃声和节假日调休日历。
-
-## 已实现功能
-
-| 模块 | 功能 |
+| 模块 | 当前能力 |
 |---|---|
-| 提醒事项 | 新增、编辑、删除、完成、按分类筛选、待办与历史状态展示 |
-| 时间规则 | 单次、每小时、每 5 小时、每天、工作日、每周、周日、周末、每两周、每月、每 3 个月、每 6 个月、每年，可设置重复结束日期 |
-| 提前提醒 | 固定提前量和分钟、小时、天、周、月自定义提前量 |
-| 通知方式 | 每条提醒独立控制响铃与振动，设置页管理新提醒默认值 |
-| 强提醒 | `ADVANCE`、`DUE`、`SNOOZE` 独立触发；锁屏使用系统 FullScreenIntent，解锁使用应用悬浮强提醒页 |
-| 提醒操作 | 关闭、稍后 10 分钟、标为完成；重复提醒支持仅本次或全部 |
-| 分类 | 新增、编辑、删除分类，颜色标识和未分类筛选 |
-| 系统恢复 | 开机、应用更新、精确闹钟权限恢复和重新打开 App 后重建未来闹钟 |
-| 权限引导 | 精确闹钟、锁屏全屏提醒、解锁悬浮强提醒页、通知渠道、自启动和省电策略入口 |
-| 诊断与排障 | 实例级提醒黑匣子、24 小时增强诊断、应用侧结论解析、用户主动 ZIP 导出与清除 |
+| 提醒 | 新增、编辑、完成、单次/重复、提前提醒、稍后 10 分钟、分类筛选、响铃与振动独立开关 |
+| 强提醒 | `ADVANCE`、`DUE`、`SNOOZE` 独立实例；锁屏走 FullScreenIntent，解锁且获悬浮权限时显示应用整页悬浮强提醒；10 分钟自动结束 |
+| 数据闭环 | 删除先进入“已删除”回收站；支持多选恢复与永久删除；已删除记录不会出现在列表或重新被调度 |
+| 首页治理 | 标题最多 500 字符；首页最多 4 行、省略号截断；紧凑卡片布局；“整理”支持多选置顶、置底、删除和长按把手精细拖拽 |
+| 恢复与诊断 | 开机/更新/权限恢复后重建有效闹钟；应用私有 Reminder Black Box 支持本地诊断与主动 ZIP 导出 |
 
-完整需求和验收口径见 [产品需求文档](docs/01-产品文档/01-产品需求文档.md)。
+## 关键规则
 
-## 强提醒语义
+- `triggerTime` 是重复模板，`nextTriggerTime` 是下一次真实提醒时间；排序从不改变两者或 AlarmManager 调度。
+- 回收站使用 `DELETED + deletedAt + statusBeforeDelete`：移入后立即取消闹钟；恢复后按删除前状态恢复，未来待办会重新注册闹钟。
+- 只有 `DUE` 推进重复周期；`ADVANCE` 和 `SNOOZE` 不吞掉正式到点提醒。
+- Android 在设备解锁且用户正在使用时可能把 FullScreenIntent 降级为横幅；本 App 仅在用户显式授予悬浮权限后使用 `TYPE_APPLICATION_OVERLAY` 提供整页强提醒。
 
-- 每个事件使用 `reminderId + alarmId + kind + occurrenceTime` 标识；旧事件不得停止新事件。
-- `ADVANCE`、`DUE`、`SNOOZE` 是独立事件，只有 `DUE` 推进重复周期。
-- 同一提醒的提前事件未关闭时，到点事件仍重新响铃、振动并投递视觉提醒。
-- 强提醒开始 10 分钟后自动停止声音和振动、结束前台状态、关闭匹配的全屏页并撤销 App 主动保亮；保留一条静音通知供用户回看。
-- 锁屏或屏幕关闭时，只由系统对通知的 `FullScreenIntent` 投递 `AlarmActivity`；应用不从后台自行拉起 Activity，也不在通知前主动点亮屏幕。
-- 已解锁且用户正在操作时，Android 会把 FullScreenIntent 降级为横幅。v1.12 在用户开启“显示在其他应用上层”后，由前台提醒服务挂载可交互的应用悬浮强提醒页；未授权时明确降级为系统横幅。
-- 悬浮页和锁屏页共享关闭、稍后 10 分钟、标为完成及十分钟自动结束语义；悬浮页移除后不再由 App 保持屏幕常亮。
-- 每条提醒的“响铃提醒”“震动提醒”是持久化的独立开关；两者关闭时只会有视觉提醒，编辑页会明确提示。
-- “稍后提醒 10 分钟”也是独立 `SNOOZE` 事件。v1.12 真机已验证从 21:03:16 操作到 21:13:16 准时回调，并在解锁状态重新显示悬浮整页、响铃和震动。
-
-## 技术架构
+## 架构
 
 ```text
-Compose UI → ViewModel → UseCase → Repository interface → Room DAO
+Compose UI → ViewModel → UseCase → Repository → Room/SQLite
 
 AlarmScheduler → AlarmManager → AlarmReceiver → AlarmAlertService
-                                      ├─ 声音、振动与十分钟会话计时
-                                      ├─ 锁屏 → 高优先级通知 → SystemUI FullScreenIntent → AlarmActivity
-                                      └─ 解锁且已授权 → TYPE_APPLICATION_OVERLAY → 应用强提醒页
+                                      ├─ 声音、振动、十分钟会话
+                                      ├─ 锁屏：SystemUI FullScreenIntent → AlarmActivity
+                                      └─ 解锁且已授权：TYPE_APPLICATION_OVERLAY
 ```
 
-Room 当前为 v4。应用未声明 `INTERNET`，业务组件默认不导出，PendingIntent 使用 immutable；诊断日志保存在应用私有目录，不记录提醒标题和备注正文。详见 [强提醒诊断与日志体系](docs/04-开发文档/03-强提醒诊断与日志体系.md)。
+Room 当前为 v5。v4→v5 为增量迁移，仅增加手动排序和回收站字段；无 destructive migration。应用不声明 `INTERNET`，业务组件默认不导出，诊断不记录标题和备注正文。
 
-## 当前验证
+## 当前验证状态
 
-2026-08-12 的诊断包已确认：DUE、ADVANCE 和 SNOOZE 都能到达 Receiver、前台服务和通知链路；旧版解锁态失败点是 SystemUI 不启动 Activity。v1.12 已获用户授权并在红米 K80 Pro 上确认 `TYPE_APPLICATION_OVERLAY` 整页可见；真实 ADVANCE、DUE 和 SNOOZE 均完成解锁态整页验证，启用的声音和震动也实际启动。
-
-| 证据层 | 结果 |
+| 证据层 | v1.13 结果 |
 |---|---|
-| JVM 测试 | 100 个测试通过，失败、错误、跳过均为 0 |
-| 仪器测试 | `compileDebugAndroidTestKotlin` 与测试 APK 构建通过；悬浮层真机用例 1/1 通过 |
-| Lint | 0 error、63 warnings、3 hints |
-| Release 构建 | `assembleRelease` 通过 |
-| APK | v1.12 (`1.12 (13)`) Release 已构建并验签；版本化文件与校验值见 APK 交付文档 |
-| 目标真机 | v1.12 Release 已覆盖安装且读回 `1.12 (13)`；悬浮权限为 `allow`，专用用例和真实 ADVANCE、DUE、SNOOZE 整页通过。锁屏、十分钟自动结束等未覆盖场景仍按真机清单复验 |
+| JVM | 106 个测试通过，失败 0、错误 0；覆盖 500 字标题、软删除/恢复/永久删除、排序及既有强提醒契约 |
+| 数据库 | Room v5 schema 已生成；v4→v5 `MigrationTestHelper` 用例已写入，待设备/模拟器实际执行 |
+| 编译、Lint、Release | 仪器源码编译、Lint（0 error、66 warnings、4 hints）与 Release 已通过；详细输出见 [自动化验证](docs/05-测试与验收/01-自动化验证.md) |
+| 红米真机 | v1.13 尚未安装验收；不能把 v1.12 的悬浮强提醒证据当作本版通过证据 |
 
-## 构建方式
-
-需要 JDK 17 和 Android SDK 36：
+## 构建
 
 ```bash
 JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
-ANDROID_HOME=/opt/homebrew/share/android-commandlinetools \
-./gradlew testDebugUnitTest compileDebugAndroidTestKotlin lintDebug assembleRelease --console=plain
+./gradlew testDebugUnitTest :app:compileDebugAndroidTestKotlin lintDebug assembleRelease --console=plain
 ```
 
-本次构建产物为 `app/build/outputs/apk/release/app-release.apk`；对外交付文件为 `outputs/ReminderApp-v1.12.apk`。APK、keystore、密码、token 和 `local.properties` 不提交仓库。
+构建产物为 `app/build/outputs/apk/release/app-release.apk`；对外交付文件必须命名为 `outputs/ReminderApp-v1.13.apk`，不提交 APK、keystore、密码或本机配置。
 
-## 文档入口
+## 文档
 
-完整阅读顺序、当前文档清单和维护规则见 [文档总索引](docs/00-文档总索引.md)。接手项目先读 [当前项目状态与交接](docs/04-开发文档/02-当前项目状态与交接.md)，关键方案见 [AI 自主决策记录](docs/04-开发文档/01-AI自主决策记录.md)。
+从 [文档总索引](docs/00-文档总索引.md) 开始。接手时先读 [当前项目状态与交接](docs/04-开发文档/02-当前项目状态与交接.md)，再执行 `git status -sb && git log -1 --oneline`；关键取舍见 [AI 自主决策记录](docs/04-开发文档/01-AI自主决策记录.md)。

@@ -24,4 +24,14 @@ class AppDatabaseSchemaContractTest {
         assertFalse(source.contains("THEN -id"))
         assertFalse(source.contains("id % 2147483646"))
     }
+
+    @Test
+    fun versionFiveAddsRecycleBinAndManualSortWithoutChangingExistingRecords() {
+        val source = File("src/main/java/com/reminder/local/data/db/AppDatabase.kt").readText()
+
+        assertTrue(source.contains("version = 5"))
+        assertTrue(source.contains("MIGRATION_4_5"))
+        assertTrue(source.contains("manualSortOrder INTEGER NOT NULL DEFAULT 0"))
+        assertTrue(source.contains("statusBeforeDelete TEXT"))
+    }
 }

@@ -1,50 +1,35 @@
 # APK 构建与交付
 
-> 状态：v1.12 当前构建记录
-> 构建日期：2026-08-12
-
-## 目录
-
-- [当前产物](#当前产物)
-- [验证命令](#验证命令)
-- [交付边界](#交付边界)
+> 状态：v1.13 当前构建记录
+> 构建日期：2026-08-16
 
 ## 当前产物
 
 | 项目 | 结果 |
 |---|---|
-| 构建产物 | `app/build/outputs/apk/release/app-release.apk`（对外交付文件为 `outputs/ReminderApp-v1.12.apk`） |
-| 包名 | `com.reminder.local` |
-| 版本 | `1.12 (13)` |
+| 对外交付文件 | `outputs/ReminderApp-v1.13.apk` |
+| 原始构建文件 | `app/build/outputs/apk/release/app-release.apk` |
+| 包名 / 版本 | `com.reminder.local` / `1.13 (14)` |
 | minSdk / targetSdk | 31 / 36 |
-| 文件大小 | 48,549,853 bytes |
-| APK SHA-256 | `aed9cd9b0050a2b3b230b441c151629a0d2231055d70c5aeb2533061bd2dc49d` |
-| 签名、包元数据、网络权限 | v2 Debug 签名有效；包名为 `com.reminder.local`，未声明 `INTERNET` |
-
-`*.apk` 已被 `.gitignore` 排除，不进入源码仓库。
+| 文件大小 | 48,680,925 bytes |
+| APK SHA-256 | `5abbcadf6aa3c0ae6d7ba144b1c83a5d6a95ae35f144c9216d7fe23a7849ad6a` |
+| 签名 | v2 有效，Android Debug 证书；不适合应用商店正式发布 |
+| 网络权限 | `aapt dump permissions` 未发现 `INTERNET` |
 
 ## 验证命令
 
 ```bash
-./gradlew testDebugUnitTest compileDebugAndroidTestKotlin lintDebug assembleRelease
-```
+./gradlew assembleRelease --no-daemon --console=plain \
+  -Dkotlin.compiler.execution.strategy=in-process -Dkotlin.incremental=false
 
-```bash
-/opt/homebrew/share/android-commandlinetools/build-tools/36.0.0/aapt \
-  dump badging app/build/outputs/apk/release/app-release.apk
-
-/opt/homebrew/share/android-commandlinetools/build-tools/36.0.0/aapt \
-  dump permissions app/build/outputs/apk/release/app-release.apk
-
-/opt/homebrew/share/android-commandlinetools/build-tools/36.0.0/apksigner \
-  verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
-
-shasum -a 256 app/build/outputs/apk/release/app-release.apk
+aapt dump badging outputs/ReminderApp-v1.13.apk
+aapt dump permissions outputs/ReminderApp-v1.13.apk
+apksigner verify --verbose --print-certs outputs/ReminderApp-v1.13.apk
+shasum -a 256 outputs/ReminderApp-v1.13.apk
 ```
 
 ## 交付边界
 
-- Debug 签名适合当前个人直装和覆盖升级测试，不适合应用商店或长期生产信任链。
-- 正式签名必须由用户保管 keystore，并通过受控环境注入密码。
-- APK、AAB、keystore、密码、token、`.env` 和 `local.properties` 不提交仓库。
-- 对外发送 APK 时同时提供版本、包名、文件大小和 SHA-256；安装后再从设备侧确认版本。
+- APK、AAB、keystore、密码、token 和 `local.properties` 不提交仓库。
+- 当前没有 ADB 连接，未覆盖安装到红米；安装后必须读回 `versionName=1.13`、`versionCode=14`，并按 [真机验收清单](./02-真机验收清单.md) 执行 D1–D8 和强提醒场景。
+- 用户提供正式 keystore 后再建立正式签名、覆盖升级和回滚验证流程。

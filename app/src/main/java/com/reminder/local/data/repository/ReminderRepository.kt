@@ -5,12 +5,16 @@ import kotlinx.coroutines.flow.Flow
 
 interface ReminderRepository {
     fun observeAll(): Flow<List<Reminder>>
+    fun observeDeleted(): Flow<List<Reminder>>
     suspend fun getById(id: Long): Reminder?
+    suspend fun getByIdIncludingDeleted(id: Long): Reminder?
     suspend fun isAlarmIdInUse(alarmId: Int): Boolean
     suspend fun insert(reminder: Reminder): Long
     suspend fun update(reminder: Reminder)
     suspend fun updateIfOccurrenceCurrent(reminder: Reminder, expectedOccurrenceTime: Long): Boolean
     suspend fun delete(reminder: Reminder)
+    suspend fun nextManualSortOrder(): Long
+    suspend fun replaceManualSortOrder(ids: List<Long>, updatedAt: Long = System.currentTimeMillis()): Boolean
     suspend fun getAllPending(): List<Reminder>
     suspend fun markNonRepeatingExpired(now: Long = System.currentTimeMillis())
     fun observeCountByCategory(categoryId: Long): Flow<Int>

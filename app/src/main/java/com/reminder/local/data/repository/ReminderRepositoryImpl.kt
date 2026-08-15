@@ -15,7 +15,13 @@ class ReminderRepositoryImpl @Inject constructor(
     override fun observeAll(): Flow<List<Reminder>> =
         dao.observeAll().map { list -> list.map { it.toDomain() } }
 
+    override fun observeDeleted(): Flow<List<Reminder>> =
+        dao.observeDeleted().map { list -> list.map { it.toDomain() } }
+
     override suspend fun getById(id: Long): Reminder? = dao.getById(id)?.toDomain()
+
+    override suspend fun getByIdIncludingDeleted(id: Long): Reminder? =
+        dao.getByIdIncludingDeleted(id)?.toDomain()
 
     override suspend fun isAlarmIdInUse(alarmId: Int): Boolean = dao.isAlarmIdInUse(alarmId)
 
@@ -29,6 +35,11 @@ class ReminderRepositoryImpl @Inject constructor(
     ): Boolean = dao.updateIfOccurrenceCurrent(reminder.toEntity(), expectedOccurrenceTime)
 
     override suspend fun delete(reminder: Reminder) = dao.delete(reminder.toEntity())
+
+    override suspend fun nextManualSortOrder(): Long = dao.nextManualSortOrder()
+
+    override suspend fun replaceManualSortOrder(ids: List<Long>, updatedAt: Long): Boolean =
+        runCatching { dao.replaceManualSortOrder(ids, updatedAt) }.getOrDefault(false)
 
     override suspend fun getAllPending(): List<Reminder> = dao.getAllPending().map { it.toDomain() }
 

@@ -4,11 +4,18 @@ package com.reminder.local.domain.model
  * 提醒状态机：
  * PENDING（待触发）--用户勾选--> DONE
  * PENDING --时间已过未触发（App重启检测）--> EXPIRED
+ * PENDING/DONE/EXPIRED --移入回收站--> DELETED
  * 重复提醒触发后不进入 DONE/EXPIRED，而是原地滚动 nextTriggerTime，
  * 只有用户主动"停止重复"或超过 repeatEndDate，才变为 DONE。
  */
 enum class ReminderStatus {
-    PENDING, DONE, EXPIRED
+    PENDING, DONE, EXPIRED, DELETED
+}
+
+/** 首页的展示顺序；不会改变提醒时间或系统闹钟调度。 */
+enum class ReminderListSortMode {
+    TIME,
+    MANUAL
 }
 
 enum class RepeatType(val label: String) {

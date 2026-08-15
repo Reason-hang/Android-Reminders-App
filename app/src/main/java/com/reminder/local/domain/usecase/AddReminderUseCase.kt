@@ -38,6 +38,7 @@ class AddReminderUseCase @Inject constructor(
             val prepared = input.copy(
                 alarmId = repository.nextAvailableAlarmId(AlarmSchedulerImpl::generateAlarmId),
                 nextTriggerTime = input.triggerTime,
+                manualSortOrder = repository.nextManualSortOrder(),
                 createdAt = now,
                 updatedAt = now
             )

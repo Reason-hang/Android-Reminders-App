@@ -91,6 +91,31 @@ class AppDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun migrationFromVersionFourKeepsExistingReminderVisibleAndAddsRecycleFields() {
+        helper.createDatabase(databaseName, 4).apply {
+            execSQL(reminderV4InsertSql(1, "历史提醒", 9))
+            close()
+        }
+
+        helper.runMigrationsAndValidate(
+            databaseName,
+            5,
+            true,
+            AppDatabase.MIGRATION_4_5
+        ).use { database ->
+            database.query(
+                "SELECT status, manualSortOrder, deletedAt, statusBeforeDelete FROM reminders WHERE id = 1"
+            ).use { row ->
+                assertTrue(row.moveToFirst())
+                assertEquals("PENDING", row.getString(0))
+                assertEquals(0L, row.getLong(1))
+                assertTrue(row.isNull(2))
+                assertTrue(row.isNull(3))
+            }
+        }
+    }
+
     private fun reminderInsertSql(id: Long, title: String, alarmId: Int): String =
         """
         INSERT INTO reminders (
@@ -99,6 +124,18 @@ class AppDatabaseMigrationTest {
             customAdvanceUnit, notifyVibrate, notifySound, alarmId, createdAt, updatedAt, completedAt
         ) VALUES (
             $id, '$title', NULL, 1000, 1000, NULL, 'HIGH', 'PENDING',
+            'NONE', NULL, 'NONE', 1, 'HOURS', 1, 1, $alarmId, 1000, 1000, NULL
+        )
+        """.trimIndent()
+
+    private fun reminderV4InsertSql(id: Long, title: String, alarmId: Int): String =
+        """
+        INSERT INTO reminders (
+            id, title, note, triggerTime, nextTriggerTime, categoryId, status,
+            repeatType, repeatEndDate, advanceReminderType, customAdvanceValue,
+            customAdvanceUnit, notifyVibrate, notifySound, alarmId, createdAt, updatedAt, completedAt
+        ) VALUES (
+            $id, '$title', NULL, 1000, 1000, NULL, 'PENDING',
             'NONE', NULL, 'NONE', 1, 'HOURS', 1, 1, $alarmId, 1000, 1000, NULL
         )
         """.trimIndent()

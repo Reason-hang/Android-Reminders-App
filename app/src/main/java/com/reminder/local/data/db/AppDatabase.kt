@@ -12,7 +12,7 @@ import com.reminder.local.data.db.entity.ReminderEntity
 
 @Database(
     entities = [ReminderEntity::class, CategoryEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -100,6 +100,23 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE reminders_new RENAME TO reminders")
                 db.execSQL(
                     "CREATE UNIQUE INDEX IF NOT EXISTS index_reminders_alarmId ON reminders(alarmId)"
+                )
+            }
+        }
+
+        /**
+         * v5 增加回收站与手动整理字段。采用增量迁移，原有提醒保持可见、原有时间排序不变。
+         */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE reminders ADD COLUMN manualSortOrder INTEGER NOT NULL DEFAULT 0"
+                )
+                db.execSQL("ALTER TABLE reminders ADD COLUMN deletedAt INTEGER")
+                db.execSQL("ALTER TABLE reminders ADD COLUMN statusBeforeDelete TEXT")
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_reminders_status_manualSortOrder " +
+                        "ON reminders(status, manualSortOrder)"
                 )
             }
         }

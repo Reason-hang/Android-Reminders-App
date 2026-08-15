@@ -1,7 +1,7 @@
 package com.reminder.local.domain.usecase
 
 object ReminderContentValidator {
-    const val TITLE_MAX_LENGTH = 50
+    const val TITLE_MAX_LENGTH = 500
     const val NOTE_MAX_LENGTH = 200
 
     fun validate(title: String, note: String?): String? = when {

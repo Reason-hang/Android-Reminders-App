@@ -11,7 +11,10 @@ import com.reminder.local.domain.model.RepeatType
 
 @Entity(
     tableName = "reminders",
-    indices = [Index(value = ["alarmId"], unique = true)]
+    indices = [
+        Index(value = ["alarmId"], unique = true),
+        Index(value = ["status", "manualSortOrder"])
+    ]
 )
 data class ReminderEntity(
     @PrimaryKey(autoGenerate = true)
@@ -33,5 +36,8 @@ data class ReminderEntity(
     val createdAt: Long,
     val updatedAt: Long,
     @ColumnInfo(name = "completedAt")
-    val completedAt: Long? = null
+    val completedAt: Long? = null,
+    val manualSortOrder: Long = 0L,
+    val deletedAt: Long? = null,
+    val statusBeforeDelete: ReminderStatus? = null
 )

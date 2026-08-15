@@ -5,10 +5,11 @@ import com.reminder.local.data.repository.ReminderRepository
 import com.reminder.local.domain.alarm.AlarmScheduler
 import com.reminder.local.domain.model.Reminder
 import com.reminder.local.domain.model.RepeatActionScope
+import com.reminder.local.domain.model.ReminderStatus
 import javax.inject.Inject
 
 /**
- * 删除提醒：取消闹钟 + 删除数据库记录，三步（含清通知栏残留，交给调用方在 UI 层处理）缺一不可。
+ * 删除提醒：取消闹钟 + 移入回收站；通知栏残留由调用方在 UI 层清理。
  * 重复提醒的"仅删除本次"语义等价于"跳到下一次触发"，不会真的删掉这条记录。
  */
 class DeleteReminderUseCase @Inject constructor(
@@ -18,7 +19,13 @@ class DeleteReminderUseCase @Inject constructor(
     suspend operator fun invoke(reminder: Reminder, scope: RepeatActionScope): Boolean {
         val current = repository.getById(reminder.id) ?: return false
         if (!current.isRepeating || scope == RepeatActionScope.ALL) {
-            return runCatching { repository.delete(current) }
+            val deleted = current.copy(
+                status = ReminderStatus.DELETED,
+                statusBeforeDelete = current.status,
+                deletedAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
+            )
+            return runCatching { repository.update(deleted) }
                 .fold(
                     onSuccess = {
                         runCatching { alarmScheduler.cancel(current) }
@@ -40,7 +47,13 @@ class DeleteReminderUseCase @Inject constructor(
         )
         val exceededEnd = current.repeatEndDate != null && next != null && next > current.repeatEndDate
         if (next == null || exceededEnd) {
-            return runCatching { repository.delete(current) }
+            val deleted = current.copy(
+                status = ReminderStatus.DELETED,
+                statusBeforeDelete = current.status,
+                deletedAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
+            )
+            return runCatching { repository.update(deleted) }
                 .fold(
                     onSuccess = {
                         runCatching { alarmScheduler.cancel(current) }

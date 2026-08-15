@@ -13,6 +13,7 @@ import com.reminder.local.ui.screen.edit.EditReminderScreen
 import com.reminder.local.ui.screen.list.ReminderListScreen
 import com.reminder.local.ui.screen.settings.SettingsScreen
 import com.reminder.local.ui.screen.diagnostics.DiagnosticsScreen
+import com.reminder.local.ui.screen.deleted.DeletedRemindersScreen
 
 @Composable
 fun AppNavGraph(
@@ -32,7 +33,8 @@ fun AppNavGraph(
                 onAddClick = { navController.navigate(Routes.edit()) },
                 onEditClick = { id -> navController.navigate(Routes.edit(id)) },
                 onCategoryClick = { navController.navigate(Routes.CATEGORY) },
-                onSettingsClick = { navController.navigate(Routes.SETTINGS) }
+                onSettingsClick = { navController.navigate(Routes.SETTINGS) },
+                onDeletedClick = { navController.navigate(Routes.DELETED) }
             )
         }
         composable(
@@ -63,6 +65,10 @@ fun AppNavGraph(
 
         composable(Routes.DIAGNOSTICS) {
             DiagnosticsScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Routes.DELETED) {
+            DeletedRemindersScreen(onBack = { navController.popBackStack() })
         }
     }
 }

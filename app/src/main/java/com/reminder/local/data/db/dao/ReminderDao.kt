@@ -21,8 +21,11 @@ interface ReminderDao {
     @Delete
     suspend fun delete(entity: ReminderEntity)
 
-    @Query("SELECT * FROM reminders WHERE id = :id")
+    @Query("SELECT * FROM reminders WHERE id = :id AND status != 'DELETED'")
     suspend fun getById(id: Long): ReminderEntity?
+
+    @Query("SELECT * FROM reminders WHERE id = :id")
+    suspend fun getByIdIncludingDeleted(id: Long): ReminderEntity?
 
     /** 仅当数据库仍指向本次 occurrence 时更新，防止重复广播/并发操作二次推进。 */
     @Transaction
@@ -41,12 +44,35 @@ interface ReminderDao {
     @Query("SELECT EXISTS(SELECT 1 FROM reminders WHERE alarmId = :alarmId)")
     suspend fun isAlarmIdInUse(alarmId: Int): Boolean
 
-    /** 列表页监听：全部提醒，具体的分组/排序逻辑放在上层（domain/ui），DAO 只做基础查询。 */
-    @Query("SELECT * FROM reminders ORDER BY triggerTime ASC")
+    /** 正常列表不返回回收站数据，具体分组/排序逻辑放在上层。 */
+    @Query("SELECT * FROM reminders WHERE status != 'DELETED' ORDER BY triggerTime ASC")
     fun observeAll(): Flow<List<ReminderEntity>>
+
+    @Query("SELECT * FROM reminders WHERE status = 'DELETED' ORDER BY deletedAt DESC, id DESC")
+    fun observeDeleted(): Flow<List<ReminderEntity>>
 
     @Query("SELECT * FROM reminders WHERE status = 'PENDING'")
     suspend fun getAllPending(): List<ReminderEntity>
+
+    @Query("SELECT COALESCE(MAX(manualSortOrder), -1) + 1 FROM reminders WHERE status != 'DELETED'")
+    suspend fun nextManualSortOrder(): Long
+
+    @Query(
+        "UPDATE reminders SET manualSortOrder = :sortOrder, updatedAt = :updatedAt " +
+            "WHERE id = :id AND status != 'DONE' AND status != 'DELETED'"
+    )
+    suspend fun updateManualSortOrder(id: Long, sortOrder: Long, updatedAt: Long): Int
+
+    /** 小列表一次整理时统一写入，避免半条排序持久化。 */
+    @Transaction
+    suspend fun replaceManualSortOrder(ids: List<Long>, updatedAt: Long): Boolean {
+        ids.forEachIndexed { index, id ->
+            check(updateManualSortOrder(id, index.toLong(), updatedAt) == 1) {
+                "提醒 $id 不存在或不可参与手动排序"
+            }
+        }
+        return true
+    }
 
     /**
      * App 冷启动/开机时批量把"已过期但仍是 PENDING 且非重复"的提醒标记为 EXPIRED。
@@ -58,6 +84,6 @@ interface ReminderDao {
     )
     suspend fun markNonRepeatingExpired(now: Long)
 
-    @Query("SELECT COUNT(*) FROM reminders WHERE categoryId = :categoryId")
+    @Query("SELECT COUNT(*) FROM reminders WHERE categoryId = :categoryId AND status != 'DELETED'")
     fun observeCountByCategory(categoryId: Long): Flow<Int>
 }

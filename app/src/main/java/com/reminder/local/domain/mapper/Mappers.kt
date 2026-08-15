@@ -23,7 +23,10 @@ fun ReminderEntity.toDomain(): Reminder = Reminder(
     alarmId = alarmId,
     createdAt = createdAt,
     updatedAt = updatedAt,
-    completedAt = completedAt
+    completedAt = completedAt,
+    manualSortOrder = manualSortOrder,
+    deletedAt = deletedAt,
+    statusBeforeDelete = statusBeforeDelete
 )
 
 fun Reminder.toEntity(): ReminderEntity = ReminderEntity(
@@ -44,7 +47,10 @@ fun Reminder.toEntity(): ReminderEntity = ReminderEntity(
     alarmId = alarmId,
     createdAt = createdAt,
     updatedAt = updatedAt,
-    completedAt = completedAt
+    completedAt = completedAt,
+    manualSortOrder = manualSortOrder,
+    deletedAt = deletedAt,
+    statusBeforeDelete = statusBeforeDelete
 )
 
 fun CategoryEntity.toDomain(): Category = Category(

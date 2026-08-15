@@ -3,6 +3,7 @@ package com.reminder.local.testing
 import com.reminder.local.data.repository.ReminderRepository
 import com.reminder.local.domain.alarm.AlarmScheduler
 import com.reminder.local.domain.model.Reminder
+import com.reminder.local.domain.model.ReminderStatus
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 
@@ -18,9 +19,16 @@ class InMemoryReminderRepository(
 
     fun requireReminder(id: Long): Reminder = requireNotNull(records[id])
 
-    override fun observeAll(): Flow<List<Reminder>> = flowOf(records.values.toList())
+    override fun observeAll(): Flow<List<Reminder>> =
+        flowOf(records.values.filter { it.status != ReminderStatus.DELETED })
 
-    override suspend fun getById(id: Long): Reminder? = records[id]
+    override fun observeDeleted(): Flow<List<Reminder>> =
+        flowOf(records.values.filter { it.status == ReminderStatus.DELETED })
+
+    override suspend fun getById(id: Long): Reminder? =
+        records[id]?.takeIf { it.status != ReminderStatus.DELETED }
+
+    override suspend fun getByIdIncludingDeleted(id: Long): Reminder? = records[id]
 
     override suspend fun isAlarmIdInUse(alarmId: Int): Boolean =
         records.values.any { it.alarmId == alarmId }
@@ -53,7 +61,21 @@ class InMemoryReminderRepository(
         records.remove(reminder.id)
     }
 
-    override suspend fun getAllPending(): List<Reminder> = records.values.toList()
+    override suspend fun nextManualSortOrder(): Long =
+        (records.values.filter { it.status != ReminderStatus.DELETED }.maxOfOrNull { it.manualSortOrder } ?: -1L) + 1L
+
+    override suspend fun replaceManualSortOrder(ids: List<Long>, updatedAt: Long): Boolean {
+        if (ids.distinct().size != ids.size) return false
+        ids.forEachIndexed { index, id ->
+            val current = records[id] ?: return false
+            if (current.status == ReminderStatus.DONE || current.status == ReminderStatus.DELETED) return false
+            records[id] = current.copy(manualSortOrder = index.toLong(), updatedAt = updatedAt)
+        }
+        return true
+    }
+
+    override suspend fun getAllPending(): List<Reminder> =
+        records.values.filter { it.status == ReminderStatus.PENDING }
 
     override suspend fun markNonRepeatingExpired(now: Long) = Unit
 
