@@ -12,7 +12,7 @@ import com.reminder.local.data.db.entity.ReminderEntity
 
 @Database(
     entities = [ReminderEntity::class, CategoryEntity::class],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -117,6 +117,27 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL(
                     "CREATE INDEX IF NOT EXISTS index_reminders_status_manualSortOrder " +
                         "ON reminders(status, manualSortOrder)"
+                )
+            }
+        }
+
+        /**
+         * v6 修复 v5 中可空 statusBeforeDelete 与非空 Converter 不匹配的问题。
+         * 同时清洗任何枚举协议之外的历史字符串，避免冷启动重建闹钟时整批查询崩溃。
+         */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "UPDATE reminders SET status = 'PENDING' " +
+                        "WHERE status IS NULL OR status NOT IN ('PENDING', 'DONE', 'EXPIRED', 'DELETED')"
+                )
+                db.execSQL(
+                    "UPDATE reminders SET statusBeforeDelete = NULL WHERE status != 'DELETED'"
+                )
+                db.execSQL(
+                    "UPDATE reminders SET statusBeforeDelete = 'PENDING' " +
+                        "WHERE status = 'DELETED' AND (statusBeforeDelete IS NULL OR " +
+                        "statusBeforeDelete NOT IN ('PENDING', 'DONE', 'EXPIRED'))"
                 )
             }
         }

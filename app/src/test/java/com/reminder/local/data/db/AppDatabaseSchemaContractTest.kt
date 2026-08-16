@@ -26,12 +26,14 @@ class AppDatabaseSchemaContractTest {
     }
 
     @Test
-    fun versionFiveAddsRecycleBinAndManualSortWithoutChangingExistingRecords() {
+    fun versionSixKeepsRecycleBinAndRepairsNullableStatusBeforeDelete() {
         val source = File("src/main/java/com/reminder/local/data/db/AppDatabase.kt").readText()
 
-        assertTrue(source.contains("version = 5"))
+        assertTrue(source.contains("version = 6"))
         assertTrue(source.contains("MIGRATION_4_5"))
+        assertTrue(source.contains("MIGRATION_5_6"))
         assertTrue(source.contains("manualSortOrder INTEGER NOT NULL DEFAULT 0"))
         assertTrue(source.contains("statusBeforeDelete TEXT"))
+        assertTrue(source.contains("statusBeforeDelete = NULL WHERE status != 'DELETED'"))
     }
 }

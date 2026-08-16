@@ -1,6 +1,6 @@
 # Android Reminders App
 
-> 当前版本：v1.14（versionCode 15）
+> 当前版本：v1.15（versionCode 16）
 > 更新时间：2026-08-16
 > 包名：`com.reminder.local`；目标设备：红米 K80 Pro、HyperOS、Android 16
 
@@ -35,16 +35,16 @@ AlarmScheduler → AlarmManager → AlarmReceiver → AlarmAlertService
                                       └─ 解锁且已授权：TYPE_APPLICATION_OVERLAY
 ```
 
-Room 当前为 v5。v4→v5 为增量迁移，仅增加手动排序和回收站字段；无 destructive migration。应用不声明 `INTERNET`，业务组件默认不导出，诊断不记录标题和备注正文。
+Room 当前为 v6。v4→v5 增加手动排序和回收站字段；v5→v6 修复可空 `statusBeforeDelete` 的 Converter 契约，并清洗异常历史枚举值；无 destructive migration。应用不声明 `INTERNET`，业务组件默认不导出，诊断不记录标题和备注正文。
 
 ## 当前验证状态
 
-| 证据层 | v1.14 结果 |
+| 证据层 | v1.15 结果 |
 |---|---|
-| JVM | 111 个测试通过，失败 0、错误 0；覆盖编辑页撤销/重做、500 字标题、软删除/恢复/永久删除、排序及既有强提醒契约 |
-| 数据库 | Room v5 schema 已生成；v4→v5 `MigrationTestHelper` 用例已写入，待设备/模拟器实际执行 |
-| 编译、Lint、Release | 仪器源码编译、Lint（0 error、67 warnings、4 hints）与 Release 已通过；详细输出见 [自动化验证](docs/05-测试与验收/01-自动化验证.md) |
-| 红米真机 | v1.14 尚未安装验收；不能把 v1.12 的悬浮强提醒证据当作本版通过证据 |
+| JVM | 112 个测试通过，失败 0、错误 0；新增可空 `statusBeforeDelete` Converter 回归 |
+| 数据库 | Room v6 schema 已生成；新增 v5→v6 清洗迁移和真实 DAO 映射仪器用例，待设备/模拟器实际执行 |
+| 编译、Lint、Release | Android 仪器源码编译、Lint（0 error、67 warnings、4 hints）与 Release 已通过；详细输出见 [自动化验证](docs/05-测试与验收/01-自动化验证.md) |
+| 红米真机 | v1.15 覆盖安装和“v1.14 空 `statusBeforeDelete` 冷启动”待验收；不能把旧版证据当作本版通过证据 |
 
 ## 构建
 
@@ -53,7 +53,7 @@ JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
 ./gradlew testDebugUnitTest :app:compileDebugAndroidTestKotlin lintDebug assembleRelease --console=plain
 ```
 
-构建产物为 `app/build/outputs/apk/release/app-release.apk`；对外交付文件必须命名为 `outputs/ReminderApp-v1.14.apk`，不提交 APK、keystore、密码或本机配置。
+构建产物为 `app/build/outputs/apk/release/app-release.apk`；对外交付文件必须命名为 `outputs/ReminderApp-v1.15.apk`，不提交 APK、keystore、密码或本机配置。
 
 ## 文档
 

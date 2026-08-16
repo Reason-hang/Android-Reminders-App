@@ -7,6 +7,7 @@ import com.reminder.local.domain.model.ReminderStatus
 import com.reminder.local.domain.model.RepeatType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ConvertersTest {
@@ -16,6 +17,12 @@ class ConvertersTest {
     @Test
     fun invalidStatusFallsBackToPending() {
         assertEquals(ReminderStatus.PENDING, safelyRead { converters.stringToStatus("BROKEN_STATUS") })
+    }
+
+    @Test
+    fun nullableStatusBeforeDeleteRoundTripsAsNull() {
+        assertNull(converters.stringToStatus(null))
+        assertNull(converters.statusToString(null))
     }
 
     @Test
