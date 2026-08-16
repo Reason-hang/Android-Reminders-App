@@ -49,6 +49,8 @@ data class EditReminderUiState(
     val timeError: String? = null,
     val generalError: String? = null,
     val isSaving: Boolean = false,
+    val canUndo: Boolean = false,
+    val canRedo: Boolean = false,
     val saveSuccess: Boolean = false,
     val reactivated: Boolean = false,
     val pendingDeleteScope: Boolean = false,
@@ -70,6 +72,7 @@ class EditReminderViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(EditReminderUiState(id = reminderId, isNew = reminderId < 0))
     val uiState: StateFlow<EditReminderUiState> = _uiState.asStateFlow()
+    private val editHistory = EditReminderHistory()
 
     init {
         viewModelScope.launch {
@@ -96,6 +99,7 @@ class EditReminderViewModel @Inject constructor(
                         status = reminder.status,
                         loaded = true
                     )
+                    editHistory.reset(_uiState.value.toEditReminderSnapshot())
                 }
             } else {
                 val defaults = settingsDataStore.settings.first()
@@ -105,59 +109,70 @@ class EditReminderViewModel @Inject constructor(
                     notifySound = defaults.defaultNotifySound,
                     loaded = true
                 )
+                editHistory.reset(_uiState.value.toEditReminderSnapshot())
             }
         }
     }
 
     fun onTitleChange(value: String) {
         if (value.length <= ReminderContentValidator.TITLE_MAX_LENGTH) {
-            _uiState.value = _uiState.value.copy(title = value, titleError = null)
+            updateForm(EditReminderChangeKind.TITLE_TEXT) { it.copy(title = value, titleError = null) }
         }
     }
 
     fun onNoteChange(value: String) {
         if (value.length <= ReminderContentValidator.NOTE_MAX_LENGTH) {
-            _uiState.value = _uiState.value.copy(note = value)
+            updateForm(EditReminderChangeKind.NOTE_TEXT) { it.copy(note = value) }
         }
     }
 
     fun onDateTimeSelected(millis: Long) {
-        _uiState.value = _uiState.value.copy(triggerTime = millis, timeError = null)
+        updateForm { it.copy(triggerTime = millis, timeError = null) }
     }
 
     fun onCategorySelected(categoryId: Long?) {
-        _uiState.value = _uiState.value.copy(categoryId = categoryId)
+        updateForm { it.copy(categoryId = categoryId) }
     }
 
     fun onRepeatTypeSelected(type: RepeatType) {
-        _uiState.value = _uiState.value.copy(
+        updateForm { state -> state.copy(
             repeatType = type,
-            repeatEndDate = if (type == RepeatType.NONE) null else _uiState.value.repeatEndDate
-        )
+            repeatEndDate = if (type == RepeatType.NONE) null else state.repeatEndDate
+        ) }
     }
 
     fun onRepeatEndDateSelected(millis: Long?) {
-        _uiState.value = _uiState.value.copy(repeatEndDate = millis)
+        updateForm { it.copy(repeatEndDate = millis) }
     }
 
     fun onAdvanceReminderSelected(type: AdvanceReminderType) {
-        _uiState.value = _uiState.value.copy(advanceReminderType = type)
+        updateForm { it.copy(advanceReminderType = type) }
     }
 
     fun onCustomAdvanceValueSelected(value: Int) {
-        _uiState.value = _uiState.value.copy(customAdvanceValue = value.coerceIn(1, 200))
+        updateForm { it.copy(customAdvanceValue = value.coerceIn(1, 200)) }
     }
 
     fun onCustomAdvanceUnitSelected(unit: AdvanceReminderUnit) {
-        _uiState.value = _uiState.value.copy(customAdvanceUnit = unit)
+        updateForm { it.copy(customAdvanceUnit = unit) }
     }
 
     fun onNotifyVibrateToggle(enabled: Boolean) {
-        _uiState.value = _uiState.value.copy(notifyVibrate = enabled)
+        updateForm { it.copy(notifyVibrate = enabled) }
     }
 
     fun onNotifySoundToggle(enabled: Boolean) {
-        _uiState.value = _uiState.value.copy(notifySound = enabled)
+        updateForm { it.copy(notifySound = enabled) }
+    }
+
+    fun undo() {
+        if (_uiState.value.isSaving) return
+        editHistory.undo()?.let(::applyEditReminderSnapshot)
+    }
+
+    fun redo() {
+        if (_uiState.value.isSaving) return
+        editHistory.redo()?.let(::applyEditReminderSnapshot)
     }
 
     fun save() {
@@ -188,7 +203,15 @@ class EditReminderViewModel @Inject constructor(
 
             if (state.isNew) {
                 when (val result = addReminderUseCase(reminder)) {
-                    is SaveResult.Success -> _uiState.value = _uiState.value.copy(isSaving = false, saveSuccess = true)
+                    is SaveResult.Success -> {
+                        editHistory.reset(state.toEditReminderSnapshot())
+                        _uiState.value = _uiState.value.copy(
+                            isSaving = false,
+                            canUndo = false,
+                            canRedo = false,
+                            saveSuccess = true
+                        )
+                    }
                     is SaveResult.TimeAlreadyPassed -> _uiState.value =
                         _uiState.value.copy(isSaving = false, timeError = result.message)
                     is SaveResult.Failure -> _uiState.value =
@@ -196,11 +219,16 @@ class EditReminderViewModel @Inject constructor(
                 }
             } else {
                 when (val result = editReminderUseCase(reminder)) {
-                    is EditResult.Success -> _uiState.value = _uiState.value.copy(
-                        isSaving = false,
-                        saveSuccess = true,
-                        reactivated = result.reactivated
-                    )
+                    is EditResult.Success -> {
+                        editHistory.reset(state.toEditReminderSnapshot())
+                        _uiState.value = _uiState.value.copy(
+                            isSaving = false,
+                            canUndo = false,
+                            canRedo = false,
+                            saveSuccess = true,
+                            reactivated = result.reactivated
+                        )
+                    }
                     is EditResult.TimeAlreadyPassed -> _uiState.value =
                         _uiState.value.copy(isSaving = false, timeError = result.message)
                     is EditResult.Failure -> _uiState.value =
@@ -230,6 +258,52 @@ class EditReminderViewModel @Inject constructor(
             )
         }
     }
+
+    private fun updateForm(
+        changeKind: EditReminderChangeKind = EditReminderChangeKind.FORM,
+        transform: (EditReminderUiState) -> EditReminderUiState
+    ) {
+        val current = _uiState.value
+        val next = transform(current)
+        if (current.toEditReminderSnapshot() == next.toEditReminderSnapshot()) return
+        editHistory.record(next.toEditReminderSnapshot(), changeKind)
+        _uiState.value = next.copy(canUndo = editHistory.canUndo, canRedo = editHistory.canRedo)
+    }
+
+    private fun applyEditReminderSnapshot(snapshot: EditReminderSnapshot) {
+        _uiState.value = _uiState.value.copy(
+            title = snapshot.title,
+            note = snapshot.note,
+            triggerTime = snapshot.triggerTime,
+            categoryId = snapshot.categoryId,
+            repeatType = snapshot.repeatType,
+            repeatEndDate = snapshot.repeatEndDate,
+            advanceReminderType = snapshot.advanceReminderType,
+            customAdvanceValue = snapshot.customAdvanceValue,
+            customAdvanceUnit = snapshot.customAdvanceUnit,
+            notifyVibrate = snapshot.notifyVibrate,
+            notifySound = snapshot.notifySound,
+            titleError = null,
+            timeError = null,
+            generalError = null,
+            canUndo = editHistory.canUndo,
+            canRedo = editHistory.canRedo
+        )
+    }
+
+    private fun EditReminderUiState.toEditReminderSnapshot() = EditReminderSnapshot(
+        title = title,
+        note = note,
+        triggerTime = triggerTime,
+        categoryId = categoryId,
+        repeatType = repeatType,
+        repeatEndDate = repeatEndDate,
+        advanceReminderType = advanceReminderType,
+        customAdvanceValue = customAdvanceValue,
+        customAdvanceUnit = customAdvanceUnit,
+        notifyVibrate = notifyVibrate,
+        notifySound = notifySound
+    )
 
     companion object {
         /** 新增提醒默认时间：当前时间往后取整到下一个整点再加一小时，避免默认就是"过去时间"。 */

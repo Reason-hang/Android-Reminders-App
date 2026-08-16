@@ -1,6 +1,6 @@
 # Android Reminders App
 
-> 当前版本：v1.13（versionCode 14）
+> 当前版本：v1.14（versionCode 15）
 > 更新时间：2026-08-16
 > 包名：`com.reminder.local`；目标设备：红米 K80 Pro、HyperOS、Android 16
 
@@ -14,6 +14,7 @@
 | 强提醒 | `ADVANCE`、`DUE`、`SNOOZE` 独立实例；锁屏走 FullScreenIntent，解锁且获悬浮权限时显示应用整页悬浮强提醒；10 分钟自动结束 |
 | 数据闭环 | 删除先进入“已删除”回收站；支持多选恢复与永久删除；已删除记录不会出现在列表或重新被调度 |
 | 首页治理 | 标题最多 500 字符；首页最多 4 行、省略号截断；紧凑卡片布局；“整理”支持多选置顶、置底、删除和长按把手精细拖拽 |
+| 编辑体验 | 新增/编辑页支持本次会话内撤销、重做；顶部使用撤销/重做/对勾保存图标，删除收纳到更多菜单 |
 | 恢复与诊断 | 开机/更新/权限恢复后重建有效闹钟；应用私有 Reminder Black Box 支持本地诊断与主动 ZIP 导出 |
 
 ## 关键规则
@@ -38,12 +39,12 @@ Room 当前为 v5。v4→v5 为增量迁移，仅增加手动排序和回收站�
 
 ## 当前验证状态
 
-| 证据层 | v1.13 结果 |
+| 证据层 | v1.14 结果 |
 |---|---|
-| JVM | 106 个测试通过，失败 0、错误 0；覆盖 500 字标题、软删除/恢复/永久删除、排序及既有强提醒契约 |
+| JVM | 111 个测试通过，失败 0、错误 0；覆盖编辑页撤销/重做、500 字标题、软删除/恢复/永久删除、排序及既有强提醒契约 |
 | 数据库 | Room v5 schema 已生成；v4→v5 `MigrationTestHelper` 用例已写入，待设备/模拟器实际执行 |
-| 编译、Lint、Release | 仪器源码编译、Lint（0 error、66 warnings、4 hints）与 Release 已通过；详细输出见 [自动化验证](docs/05-测试与验收/01-自动化验证.md) |
-| 红米真机 | v1.13 尚未安装验收；不能把 v1.12 的悬浮强提醒证据当作本版通过证据 |
+| 编译、Lint、Release | 仪器源码编译、Lint（0 error、67 warnings、4 hints）与 Release 已通过；详细输出见 [自动化验证](docs/05-测试与验收/01-自动化验证.md) |
+| 红米真机 | v1.14 尚未安装验收；不能把 v1.12 的悬浮强提醒证据当作本版通过证据 |
 
 ## 构建
 
@@ -52,7 +53,7 @@ JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
 ./gradlew testDebugUnitTest :app:compileDebugAndroidTestKotlin lintDebug assembleRelease --console=plain
 ```
 
-构建产物为 `app/build/outputs/apk/release/app-release.apk`；对外交付文件必须命名为 `outputs/ReminderApp-v1.13.apk`，不提交 APK、keystore、密码或本机配置。
+构建产物为 `app/build/outputs/apk/release/app-release.apk`；对外交付文件必须命名为 `outputs/ReminderApp-v1.14.apk`，不提交 APK、keystore、密码或本机配置。
 
 ## 文档
 

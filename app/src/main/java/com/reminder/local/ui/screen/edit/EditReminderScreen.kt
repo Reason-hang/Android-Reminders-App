@@ -22,16 +22,20 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,7 +49,12 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipAnchorPosition
+import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -110,6 +119,7 @@ fun EditReminderScreen(
     var repeatMenuExpanded by remember { mutableStateOf(false) }
     var advanceMenuExpanded by remember { mutableStateOf(false) }
     var showCustomAdvancePicker by remember { mutableStateOf(false) }
+    var moreMenuExpanded by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -121,29 +131,46 @@ fun EditReminderScreen(
                     }
                 },
                 actions = {
-                    // 2026-07 迭代修复（问题3）：原来页面底部还有一个同样触发 viewModel::save
-                    // 的全宽按钮，用户必须滚动到底才能点到，这里已删除那个重复按钮
-                    // （见下方表单末尾的注释）。现在"保存"只在顶部栏这一个入口，
-                    // 打开页面立刻可见，不需要滚动；同时把原来不醒目的纯文字按钮
-                    // 换成带图标的实心按钮，避免和旁边的删除图标一起被忽略。
-                    Button(
+                    EditorTooltipIconButton(
+                        onClick = viewModel::undo,
+                        enabled = uiState.canUndo && !uiState.isSaving,
+                        contentDescription = "撤销",
+                        icon = Icons.AutoMirrored.Filled.Undo
+                    )
+                    EditorTooltipIconButton(
+                        onClick = viewModel::redo,
+                        enabled = uiState.canRedo && !uiState.isSaving,
+                        contentDescription = "重做",
+                        icon = Icons.AutoMirrored.Filled.Redo
+                    )
+                    EditorTooltipIconButton(
                         onClick = viewModel::save,
                         enabled = !uiState.isSaving,
-                        modifier = Modifier.padding(end = 4.dp)
-                    ) {
-                        if (!uiState.isSaving) {
-                            Icon(
-                                Icons.Filled.Check,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                        }
-                        Text(if (uiState.isSaving) "保存中" else "保存")
-                    }
+                        contentDescription = if (uiState.isSaving) "保存中" else "保存",
+                        icon = Icons.Filled.Check,
+                        filled = true
+                    )
                     if (!uiState.isNew) {
-                        IconButton(onClick = viewModel::requestDelete) {
-                            Icon(Icons.Filled.Delete, contentDescription = "删除")
+                        Box {
+                            EditorTooltipIconButton(
+                                onClick = { moreMenuExpanded = true },
+                                enabled = !uiState.isSaving,
+                                contentDescription = "更多操作",
+                                icon = Icons.Filled.MoreVert
+                            )
+                            DropdownMenu(
+                                expanded = moreMenuExpanded,
+                                onDismissRequest = { moreMenuExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("删除") },
+                                    leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
+                                    onClick = {
+                                        moreMenuExpanded = false
+                                        viewModel.requestDelete()
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -804,6 +831,36 @@ private fun EndRepeatOptionRow(text: String, selected: Boolean, onClick: () -> U
         Text(text, style = MaterialTheme.typography.titleMedium)
         if (selected) {
             Text("✓", color = MaterialTheme.colorScheme.primary, fontSize = 28.sp)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EditorTooltipIconButton(
+    onClick: () -> Unit,
+    enabled: Boolean,
+    contentDescription: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    filled: Boolean = false
+) {
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
+        tooltip = { PlainTooltip { Text(contentDescription) } },
+        state = rememberTooltipState()
+    ) {
+        if (filled) {
+            FilledIconButton(
+                onClick = onClick,
+                enabled = enabled,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(20.dp))
+            }
+        } else {
+            IconButton(onClick = onClick, enabled = enabled) {
+                Icon(icon, contentDescription = contentDescription)
+            }
         }
     }
 }
