@@ -7,7 +7,6 @@ import com.reminder.local.domain.model.ReminderStatus
 import com.reminder.local.domain.model.RepeatType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ConvertersTest {
@@ -16,25 +15,25 @@ class ConvertersTest {
 
     @Test
     fun invalidStatusFallsBackToPending() {
-        assertEquals(ReminderStatus.PENDING, safelyRead { converters.stringToStatus("BROKEN_STATUS") })
+        assertEquals(ReminderStatus.PENDING, converters.stringToStatus("BROKEN_STATUS"))
     }
 
     @Test
-    fun nullableStatusBeforeDeleteRoundTripsAsNull() {
-        assertNull(converters.stringToStatus(null))
-        assertNull(converters.statusToString(null))
+    fun requiredStatusConverterNeverReturnsNull() {
+        assertEquals(ReminderStatus.PENDING, converters.stringToStatus(null))
+        assertEquals("PENDING", converters.statusToString(ReminderStatus.PENDING))
     }
 
     @Test
     fun invalidRepeatTypeFallsBackToNone() {
-        assertEquals(RepeatType.NONE, safelyRead { converters.stringToRepeatType("BROKEN_REPEAT") })
+        assertEquals(RepeatType.NONE, converters.stringToRepeatType("BROKEN_REPEAT"))
     }
 
     @Test
     fun invalidAdvanceReminderTypeFallsBackToNone() {
         assertEquals(
             AdvanceReminderType.NONE,
-            safelyRead { converters.stringToAdvanceReminderType("BROKEN_ADVANCE_TYPE") }
+            converters.stringToAdvanceReminderType("BROKEN_ADVANCE_TYPE")
         )
     }
 
@@ -42,7 +41,7 @@ class ConvertersTest {
     fun invalidAdvanceReminderUnitFallsBackToHours() {
         assertEquals(
             AdvanceReminderUnit.HOURS,
-            safelyRead { converters.stringToAdvanceReminderUnit("BROKEN_ADVANCE_UNIT") }
+            converters.stringToAdvanceReminderUnit("BROKEN_ADVANCE_UNIT")
         )
     }
 
@@ -89,5 +88,4 @@ class ConvertersTest {
         )
     }
 
-    private fun <T> safelyRead(read: () -> T): T? = runCatching(read).getOrNull()
 }

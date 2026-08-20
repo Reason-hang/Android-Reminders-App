@@ -2,11 +2,13 @@ package com.reminder.local.domain.usecase
 
 import com.reminder.local.domain.model.Reminder
 import com.reminder.local.domain.model.RepeatActionScope
+import com.reminder.local.domain.model.ReminderStatus
 import com.reminder.local.domain.model.RepeatType
 import com.reminder.local.testing.InMemoryReminderRepository
 import com.reminder.local.testing.RecordingAlarmScheduler
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CompleteReminderUseCaseTest {
@@ -101,6 +103,24 @@ class CompleteReminderUseCaseTest {
         assertEquals(true, success)
         assertEquals(rescheduled, repository.requireReminder(rescheduled.id))
         assertEquals(rescheduled, scheduler.scheduled[rescheduled.alarmId])
+    }
+
+    @Test
+    fun undoCompletedReminderCleansPartiallyRegisteredAlarmOnScheduleFailure() = runBlocking {
+        val completed = Reminder(
+            id = 4L,
+            title = "撤销完成清理测试",
+            triggerTime = System.currentTimeMillis() + 3_600_000L,
+            nextTriggerTime = System.currentTimeMillis() + 3_600_000L,
+            status = ReminderStatus.DONE,
+            alarmId = 206
+        )
+        val repository = InMemoryReminderRepository(listOf(completed))
+        val scheduler = RecordingAlarmScheduler().apply { partiallyScheduleThenFail = true }
+
+        assertEquals(false, CompleteReminderUseCase(repository, scheduler).markPending(completed))
+        assertTrue(scheduler.scheduled.isEmpty())
+        assertEquals(ReminderStatus.DONE, repository.requireReminder(completed.id).status)
     }
 
     private fun repeatingReminder(): Reminder {

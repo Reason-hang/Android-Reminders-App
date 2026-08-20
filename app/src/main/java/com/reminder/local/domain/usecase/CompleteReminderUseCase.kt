@@ -108,6 +108,10 @@ class CompleteReminderUseCase @Inject constructor(
                     false
                 }
             } catch (scheduleError: Exception) {
+                runCatching { alarmScheduler.cancel(updated) }
+                    .onFailure {
+                        logError("撤销完成失败后清理残留系统闹钟失败 reminderId=${reminder.id}", it)
+                    }
                 logError("markPending 重新调度失败 reminderId=${reminder.id}", scheduleError)
                 false
             }

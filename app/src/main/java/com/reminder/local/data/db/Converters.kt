@@ -9,15 +9,13 @@ import com.reminder.local.domain.model.RepeatType
 class Converters {
 
     @TypeConverter
-    fun statusToString(value: ReminderStatus?): String? = value?.name
+    fun statusToString(value: ReminderStatus): String = value.name
 
     @TypeConverter
-    fun stringToStatus(value: String?): ReminderStatus? = value?.let {
-        try {
-            ReminderStatus.valueOf(it)
-        } catch (_: IllegalArgumentException) {
-            ReminderStatus.PENDING
-        }
+    fun stringToStatus(value: String?): ReminderStatus = try {
+        value?.let(ReminderStatus::valueOf) ?: ReminderStatus.PENDING
+    } catch (_: IllegalArgumentException) {
+        ReminderStatus.PENDING
     }
 
     @TypeConverter

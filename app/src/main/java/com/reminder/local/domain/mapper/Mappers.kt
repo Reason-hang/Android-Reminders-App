@@ -4,6 +4,7 @@ import com.reminder.local.data.db.entity.CategoryEntity
 import com.reminder.local.data.db.entity.ReminderEntity
 import com.reminder.local.domain.model.Category
 import com.reminder.local.domain.model.Reminder
+import com.reminder.local.domain.model.ReminderStatus
 
 fun ReminderEntity.toDomain(): Reminder = Reminder(
     id = id,
@@ -26,7 +27,7 @@ fun ReminderEntity.toDomain(): Reminder = Reminder(
     completedAt = completedAt,
     manualSortOrder = manualSortOrder,
     deletedAt = deletedAt,
-    statusBeforeDelete = statusBeforeDelete
+    statusBeforeDelete = statusBeforeDelete?.toReminderStatusOrNull()
 )
 
 fun Reminder.toEntity(): ReminderEntity = ReminderEntity(
@@ -50,8 +51,11 @@ fun Reminder.toEntity(): ReminderEntity = ReminderEntity(
     completedAt = completedAt,
     manualSortOrder = manualSortOrder,
     deletedAt = deletedAt,
-    statusBeforeDelete = statusBeforeDelete
+    statusBeforeDelete = statusBeforeDelete?.name
 )
+
+private fun String.toReminderStatusOrNull(): ReminderStatus? =
+    ReminderStatus.entries.firstOrNull { it.name == this }
 
 fun CategoryEntity.toDomain(): Category = Category(
     id = id,

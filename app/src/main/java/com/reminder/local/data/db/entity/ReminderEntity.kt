@@ -39,5 +39,6 @@ data class ReminderEntity(
     val completedAt: Long? = null,
     val manualSortOrder: Long = 0L,
     val deletedAt: Long? = null,
-    val statusBeforeDelete: ReminderStatus? = null
+    /** 回收站恢复前状态按原始 TEXT 保存，避免与必填 status 共用可空枚举 Converter。 */
+    val statusBeforeDelete: String? = null
 )

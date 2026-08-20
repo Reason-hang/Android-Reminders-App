@@ -87,6 +87,7 @@ class RecordingAlarmScheduler(
 ) : AlarmScheduler {
     val scheduled = initiallyScheduled.associateBy { it.alarmId }.toMutableMap()
     var failSchedule = false
+    var partiallyScheduleThenFail = false
     val failAlarmIds = mutableSetOf<Int>()
     var canSchedule = true
 
@@ -95,6 +96,7 @@ class RecordingAlarmScheduler(
     override fun scheduleExact(reminder: Reminder) {
         if (failSchedule || reminder.alarmId in failAlarmIds) error("schedule failed")
         scheduled[reminder.alarmId] = reminder
+        if (partiallyScheduleThenFail) error("schedule failed")
     }
 
     override fun cancel(reminder: Reminder) {

@@ -51,7 +51,13 @@ class RestoreReminderUseCase @Inject constructor(
                 false
             }
         } catch (error: Exception) {
-            Log.e(TAG, "恢复提醒后注册闹钟失败 reminderId=${restored.id}", error)
+            runCatching { alarmScheduler.cancel(restored) }
+                .onFailure {
+                    runCatching {
+                        Log.e(TAG, "恢复失败后清理残留系统闹钟失败 reminderId=${restored.id}", it)
+                    }
+                }
+            runCatching { Log.e(TAG, "恢复提醒后注册闹钟失败 reminderId=${restored.id}", error) }
             false
         }
     }

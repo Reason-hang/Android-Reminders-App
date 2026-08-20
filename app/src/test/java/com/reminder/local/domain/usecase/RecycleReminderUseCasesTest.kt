@@ -29,6 +29,17 @@ class RecycleReminderUseCasesTest {
     }
 
     @Test
+    fun restoreScheduleFailureCancelsPartiallyRegisteredAlarm() = runBlocking {
+        val deleted = deletedReminder()
+        val repository = InMemoryReminderRepository(listOf(deleted))
+        val scheduler = RecordingAlarmScheduler().apply { partiallyScheduleThenFail = true }
+
+        assertFalse(RestoreReminderUseCase(repository, scheduler)(deleted.id))
+        assertTrue(scheduler.scheduled.isEmpty())
+        assertEquals(ReminderStatus.DELETED, repository.requireReminder(deleted.id).status)
+    }
+
+    @Test
     fun permanentDeleteRejectsActiveReminderAndRemovesOnlyRecycleRecord() = runBlocking {
         val active = Reminder(id = 1, title = "正常", triggerTime = System.currentTimeMillis() + 60_000, alarmId = 1)
         val deleted = deletedReminder(id = 2)
