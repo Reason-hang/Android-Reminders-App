@@ -1,7 +1,7 @@
 # Android Reminders App
 
-> 当前版本：v1.16（versionCode 17）
-> 更新时间：2026-08-20
+> 当前版本：v1.17（versionCode 18）
+> 更新时间：2026-08-22
 > 包名：`com.reminder.local`；目标设备：红米 K80 Pro、HyperOS、Android 16
 
 单用户、完全离线的 Android 强提醒应用。核心是可靠调度和可恢复的数据闭环：提醒可新增、编辑、完成、移入回收站、恢复、永久删除和手动整理；不包含任何录音、音轨、语音转写、账号或联网功能。
@@ -13,13 +13,15 @@
 | 提醒 | 新增、编辑、完成、单次/重复、提前提醒、稍后 10 分钟、分类筛选、响铃与振动独立开关 |
 | 强提醒 | `ADVANCE`、`DUE`、`SNOOZE` 独立实例；锁屏走 FullScreenIntent，解锁且获悬浮权限时显示应用整页悬浮强提醒；10 分钟自动结束 |
 | 数据闭环 | 删除先进入“已删除”回收站；支持多选恢复与永久删除；已删除记录不会出现在列表或重新被调度 |
-| 首页治理 | 标题最多 500 字符；首页最多 4 行、省略号截断；紧凑卡片布局；“整理”支持多选置顶、置底、删除和长按把手精细拖拽 |
+| 首页治理 | 标题最多 500 字符；首页最多 4 行、省略号截断；紧凑卡片布局；日期/时间/重复/提前/分类统一显示在标题下；支持按提醒时间、按创建时间、手动优先级三种排序；“整理”支持多选置顶、置底、删除和长按把手精细拖拽 |
 | 编辑体验 | 新增/编辑页支持本次会话内撤销、重做；顶部使用撤销/重做/对勾保存图标，删除收纳到更多菜单 |
 | 恢复与诊断 | 开机/更新/权限恢复后重建有效闹钟；应用私有 Reminder Black Box 支持本地诊断与主动 ZIP 导出 |
 
 ## 关键规则
 
 - `triggerTime` 是重复模板，`nextTriggerTime` 是下一次真实提醒时间；排序从不改变两者或 AlarmManager 调度。
+- 首页默认按提醒时间升序；用户一旦主动进入“整理”并发生置顶、置底或拖拽，排序模式切换并持久化为手动优先级。手动模式中新建事项追加到底部；按创建时间模式按 `createdAt` 倒序展示。
+- 按提醒时间的相同时间项依次使用 `manualSortOrder`、`createdAt`、`id` 稳定排序；切换排序模式不删除手动顺序，分类筛选只过滤、不改写全局顺序。
 - 回收站使用 `DELETED + deletedAt + statusBeforeDelete`：移入后立即取消闹钟；恢复后按删除前状态恢复，未来待办会重新注册闹钟。
 - 只有 `DUE` 推进重复周期；`ADVANCE` 和 `SNOOZE` 不吞掉正式到点提醒。
 - Android 在设备解锁且用户正在使用时可能把 FullScreenIntent 降级为横幅；本 App 仅在用户显式授予悬浮权限后使用 `TYPE_APPLICATION_OVERLAY` 提供整页强提醒。
@@ -39,12 +41,12 @@ Room 当前为 v6。v4→v5 增加手动排序和回收站字段；v5→v6 清�
 
 ## 当前验证状态
 
-| 证据层 | v1.16 结果 |
+| 证据层 | v1.17 结果 |
 |---|---|
-| JVM | 117 个测试通过，失败 0、错误 0；覆盖枚举边界、Mapper 映射和闹钟部分注册失败补偿 |
+| JVM | 121 个测试通过，失败 0、错误 0；覆盖排序比较器、强提醒视觉契约、枚举边界、Mapper 映射和闹钟部分注册失败补偿 |
 | 数据库 | Room v6 schema 无变化；`statusBeforeDelete` 改为原始可空 TEXT + Mapper 安全转换，v5→v6 迁移与 DAO 仪器源码编译通过，实际设备/模拟器执行待完成 |
 | 编译、Lint、Release | Android 仪器源码编译、Lint（0 error、67 warnings、4 hints）与 Release 已通过；详细输出见 [自动化验证](docs/05-测试与验收/01-自动化验证.md) |
-| 红米真机 | v1.16 覆盖升级、旧数据冷启动和强提醒回归待验收；不能把自动化证据当作本版真机通过证据 |
+| 红米真机 | v1.17 覆盖升级、旧数据冷启动和强提醒回归待验收；不能把自动化证据当作本版真机通过证据 |
 
 ## 构建
 
@@ -53,7 +55,7 @@ JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
 ./gradlew testDebugUnitTest :app:compileDebugAndroidTestKotlin lintDebug assembleRelease --console=plain
 ```
 
-构建产物为 `app/build/outputs/apk/release/app-release.apk`；对外交付文件为 `outputs/ReminderApp-v1.16.apk`，不提交 APK、keystore、密码或本机配置。
+构建产物为 `app/build/outputs/apk/release/app-release.apk`；对外交付文件为 `outputs/ReminderApp-v1.17.apk`，不提交 APK、keystore、密码或本机配置。
 
 ## 文档
 

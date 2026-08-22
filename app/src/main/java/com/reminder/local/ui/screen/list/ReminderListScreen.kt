@@ -1,9 +1,17 @@
 package com.reminder.local.ui.screen.list
 
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,6 +22,9 @@ import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -46,6 +57,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.reminder.local.R
 import com.reminder.local.domain.model.Reminder
+import com.reminder.local.domain.model.ReminderListSortMode
 import com.reminder.local.domain.model.RepeatActionScope
 import com.reminder.local.ui.components.CategoryFilterRow
 import com.reminder.local.ui.components.ConfirmDialog
@@ -70,6 +82,7 @@ fun ReminderListScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val snackbarHostState = remember { SnackbarHostState() }
+    var sortMenuExpanded by remember { mutableStateOf(false) }
 
     DisposableEffect(lifecycleOwner) {
         viewModel.refreshExactAlarmPermission()
@@ -136,7 +149,11 @@ fun ReminderListScreen(
             }
         },
         bottomBar = {
-            if (uiState.isManaging && uiState.selectedIds.isNotEmpty()) {
+            AnimatedVisibility(
+                visible = uiState.isManaging && uiState.selectedIds.isNotEmpty(),
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut()
+            ) {
                 androidx.compose.material3.BottomAppBar {
                     TextButton(onClick = viewModel::moveSelectedToTop, modifier = Modifier.weight(1f)) {
                         Text("置顶")
@@ -206,7 +223,18 @@ fun ReminderListScreen(
                     contentPadding = PaddingValues(bottom = 84.dp)
                 ) {
                     if (uiState.pending.isNotEmpty()) {
-                        item { SectionHeader("未完成 (${uiState.pending.size})") }
+                        item {
+                            SectionHeader(
+                                text = "未完成 (${uiState.pending.size})",
+                                sortMode = uiState.sortMode,
+                                sortMenuExpanded = sortMenuExpanded,
+                                onSortMenuExpandedChange = { sortMenuExpanded = it },
+                                onSortModeSelected = {
+                                    viewModel.selectSortMode(it)
+                                    sortMenuExpanded = false
+                                }
+                            )
+                        }
                         items(uiState.pending, key = { it.id }) { reminder ->
                             ReminderListItem(
                                 reminder = reminder,
@@ -354,11 +382,49 @@ private fun ReorderablePendingList(
 }
 
 @Composable
-private fun SectionHeader(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-    )
+private fun SectionHeader(
+    text: String,
+    sortMode: ReminderListSortMode? = null,
+    sortMenuExpanded: Boolean = false,
+    onSortMenuExpandedChange: (Boolean) -> Unit = {},
+    onSortModeSelected: (ReminderListSortMode) -> Unit = {}
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 2.dp),
+        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (sortMode != null) {
+            Box {
+                TextButton(onClick = { onSortMenuExpandedChange(true) }) {
+                    Text(sortMode.label())
+                    Icon(Icons.Filled.ExpandMore, contentDescription = "选择排序方式")
+                }
+                DropdownMenu(
+                    expanded = sortMenuExpanded,
+                    onDismissRequest = { onSortMenuExpandedChange(false) }
+                ) {
+                    ReminderListSortMode.entries.forEach { mode ->
+                        DropdownMenuItem(
+                            text = { Text(mode.label()) },
+                            onClick = { onSortModeSelected(mode) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun ReminderListSortMode.label(): String = when (this) {
+    ReminderListSortMode.MANUAL -> "手动优先级"
+    ReminderListSortMode.TIME -> "按提醒时间"
+    ReminderListSortMode.CREATED -> "按创建时间"
 }

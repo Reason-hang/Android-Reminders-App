@@ -83,6 +83,27 @@ private data class ListControls(
     val management: ManagementState
 )
 
+internal fun sortPendingReminders(
+    reminders: List<Reminder>,
+    mode: ReminderListSortMode
+): List<Reminder> = when (mode) {
+    ReminderListSortMode.TIME -> reminders.sortedWith(
+        compareBy<Reminder> { it.effectiveTime }
+            .thenBy { it.manualSortOrder }
+            .thenBy { it.createdAt }
+            .thenBy { it.id }
+    )
+    ReminderListSortMode.MANUAL -> reminders.sortedWith(
+        compareBy<Reminder> { it.manualSortOrder }
+            .thenBy { it.createdAt }
+            .thenBy { it.id }
+    )
+    ReminderListSortMode.CREATED -> reminders.sortedWith(
+        compareByDescending<Reminder> { it.createdAt }
+            .thenByDescending { it.id }
+    )
+}
+
 @HiltViewModel
 class ReminderListViewModel @Inject constructor(
     private val reminderRepository: ReminderRepository,
@@ -121,12 +142,7 @@ class ReminderListViewModel @Inject constructor(
             else -> input.reminders.filter { it.categoryId == input.selectedCategoryId }
         }
         val pendingBase = filtered.filter { it.status != ReminderStatus.DONE }
-        val pending = when (settings.reminderListSortMode) {
-            ReminderListSortMode.TIME -> pendingBase.sortedBy { it.effectiveTime }
-            ReminderListSortMode.MANUAL -> pendingBase.sortedWith(
-                compareBy<Reminder> { it.manualSortOrder }.thenBy { it.createdAt }
-            )
-        }
+        val pending = sortPendingReminders(pendingBase, settings.reminderListSortMode)
         ReminderListUiState(
             pending = pending,
             done = filtered.filter { it.status == ReminderStatus.DONE }
@@ -154,6 +170,10 @@ class ReminderListViewModel @Inject constructor(
         permissionStatus.value = currentPermissionStatus()
     }
 
+    fun selectSortMode(mode: ReminderListSortMode) {
+        viewModelScope.launch { settingsDataStore.setReminderListSortMode(mode) }
+    }
+
     private fun currentPermissionStatus() = PermissionStatus(
         exactAlarmGranted = PermissionUtils.canScheduleExactAlarms(context),
         overlayGranted = PermissionUtils.canDrawOverlays(context)
@@ -165,7 +185,6 @@ class ReminderListViewModel @Inject constructor(
             return
         }
         managementState.value = ManagementState(enabled = true)
-        viewModelScope.launch { settingsDataStore.setReminderListSortMode(ReminderListSortMode.MANUAL) }
     }
 
     fun exitManagement() {
@@ -201,7 +220,9 @@ class ReminderListViewModel @Inject constructor(
     fun persistOrder(ordered: List<Reminder>) {
         if (ordered.isEmpty()) return
         viewModelScope.launch {
-            if (!reorderRemindersUseCase(ordered.map { it.id })) {
+            if (reorderRemindersUseCase(ordered.map { it.id })) {
+                settingsDataStore.setReminderListSortMode(ReminderListSortMode.MANUAL)
+            } else {
                 _events.emit(ListEvent.ShowError("保存顺序失败，请重试"))
             }
         }

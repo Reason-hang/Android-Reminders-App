@@ -400,9 +400,10 @@ private fun AlarmScreen(
             reminder?.let {
                 Spacer(modifier = Modifier.height(18.dp))
                 Text(
-                    text = formatAlarmTime(alarmTime ?: it.effectiveTime),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = "提醒时间 ${formatAlarmTime(alarmTime ?: it.effectiveTime)}",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
             Spacer(modifier = Modifier.height(44.dp))
@@ -411,10 +412,10 @@ private fun AlarmScreen(
                 Spacer(modifier = Modifier.height(12.dp))
             }
             Button(
-                onClick = onClose,
+                onClick = onDone,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("关闭")
+                Text("完成")
             }
             Spacer(modifier = Modifier.height(10.dp))
             OutlinedButton(
@@ -426,11 +427,11 @@ private fun AlarmScreen(
             }
             Spacer(modifier = Modifier.height(10.dp))
             OutlinedButton(
-                onClick = onDone,
+                onClick = onClose,
                 modifier = Modifier.fillMaxWidth(),
                 enabled = reminder != null
             ) {
-                Text("标为完成")
+                Text("关闭提醒")
             }
         }
     }
@@ -439,4 +440,4 @@ private fun AlarmScreen(
 private fun formatAlarmTime(millis: Long): String =
     Instant.ofEpochMilli(millis)
         .atZone(ZoneId.systemDefault())
-        .format(DateTimeFormatter.ofPattern("yyyy年M月d日 HH:mm"))
+        .format(DateTimeFormatter.ofPattern("MM月dd日 HH:mm"))

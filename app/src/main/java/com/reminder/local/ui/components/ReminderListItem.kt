@@ -1,5 +1,6 @@
 package com.reminder.local.ui.components
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -133,13 +134,35 @@ private fun ReminderCard(
 ) {
     val formatted = TimeFormatter.format(reminder.effectiveTime)
     val isDone = reminder.status == ReminderStatus.DONE
+    val metadata = buildList {
+        add(TimeFormatter.dateLabel(reminder.effectiveTime))
+        add(TimeFormatter.timeLabel(reminder.effectiveTime))
+        add(reminder.repeatType.label)
+        if (reminder.advanceReminderType != com.reminder.local.domain.model.AdvanceReminderType.NONE) {
+            add(
+                if (reminder.advanceReminderType == com.reminder.local.domain.model.AdvanceReminderType.CUSTOM) {
+                    "提前 ${reminder.customAdvanceValue}${reminder.customAdvanceUnit.label}"
+                } else {
+                    "提前 ${reminder.advanceReminderType.label.removeSuffix("前")}"
+                }
+            )
+        }
+        category?.let { add(it.name) }
+    }.joinToString(" · ")
 
     Card(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp, vertical = 2.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            .padding(horizontal = 10.dp, vertical = 2.dp)
+            .animateContentSize(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isManagementMode && isSelected) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
+        )
     ) {
         Row(
             modifier = Modifier
@@ -165,30 +188,17 @@ private fun ReminderCard(
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis
                 )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = formatted.text,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (formatted.isOverdue) Color(0xFFD32F2F) else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (reminder.isRepeating) {
-                        Text(
-                            text = "· 重复",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                    category?.let {
-                        Text(
-                            text = "· ${it.name}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
+                Text(
+                    text = metadata,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (formatted.isOverdue) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
             if (isManagementMode) {
                 Text(

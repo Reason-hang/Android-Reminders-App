@@ -18,6 +18,24 @@ object TimeFormatter {
 
     data class Formatted(val text: String, val isOverdue: Boolean)
 
+    fun dateLabel(triggerTimeMillis: Long, now: Long = System.currentTimeMillis()): String {
+        val target = Instant.ofEpochMilli(triggerTimeMillis).atZone(zone)
+        val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+        return when (target.toLocalDate()) {
+            today -> "今天"
+            today.plusDays(1) -> "明天"
+            today.plusDays(2) -> "后天"
+            else -> if (target.year == today.year) {
+                target.format(DateTimeFormatter.ofPattern("MM月dd日"))
+            } else {
+                target.format(DateTimeFormatter.ofPattern("yyyy年MM月dd日"))
+            }
+        }
+    }
+
+    fun timeLabel(triggerTimeMillis: Long): String =
+        Instant.ofEpochMilli(triggerTimeMillis).atZone(zone).format(hourMinute)
+
     fun format(triggerTimeMillis: Long, now: Long = System.currentTimeMillis()): Formatted {
         val target = Instant.ofEpochMilli(triggerTimeMillis).atZone(zone)
         val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()

@@ -15,7 +15,8 @@ enum class ReminderStatus {
 /** 首页的展示顺序；不会改变提醒时间或系统闹钟调度。 */
 enum class ReminderListSortMode {
     TIME,
-    MANUAL
+    MANUAL,
+    CREATED
 }
 
 enum class RepeatType(val label: String) {
